@@ -1,15 +1,30 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 import os
 import io
+import datetime
+import itertools
 from dotenv import load_dotenv
 import plotly.graph_objects as go
-import datetime
-from pptx import Presentation
-from pptx.util import Inches
-import itertools
+
+# Import du cœur financier et quantitatif
+from financial_core import (
+    UniverseRepository,
+    ScreenerEngine,
+    AssetAnalytics,
+    DecrementAnalytics,
+    BasketAnalytics,
+    NexoPptxGenerator,
+    ExcelReportGenerator,
+    PptxReportGenerator,
+    create_excel_report,
+    create_pptx_report,
+    create_nexo_presentation_pptx,
+    extract_decrement,
+    color_score
+)
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Base de Données", layout="wide")
@@ -79,260 +94,20 @@ def init_connection():
     return create_engine(db_url)
 
 engine = init_connection()
-
-# --- Fonctions d'exportation (Excel / PPTX) ---
-def create_excel_report(dfs_dict, figs_dict):
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        workbook = writer.book
-        worksheet = workbook.add_worksheet('Rapport')
-        row = 0
-        for title, df in dfs_dict.items():
-            worksheet.write(row, 0, title)
-            row += 1
-            df.to_excel(writer, sheet_name='Rapport', startrow=row, index=False)
-            row += len(df) + 2
-            
-        for title, fig in figs_dict.items():
-            try:
-                img_bytes = fig.to_image(format="png", width=800, height=500)
-                img_buffer = io.BytesIO(img_bytes)
-                worksheet.write(row, 0, title)
-                row += 1
-                worksheet.insert_image(row, 0, title, {'image_data': img_buffer})
-                row += 26
-            except Exception as e:
-                worksheet.write(row, 0, f"Erreur export image {title}: {e}")
-                row += 2
-    buffer.seek(0)
-    return buffer
-
-def create_pptx_report(dfs_dict, figs_dict, title="Rapport"):
-    prs = Presentation()
-    
-    title_slide = prs.slides.add_slide(prs.slide_layouts[0])
-    title_slide.shapes.title.text = title
-    
-    for df_title, df in dfs_dict.items():
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = df_title
-        rows, cols = df.shape
-        table_shape = slide.shapes.add_table(rows + 1, cols, Inches(1), Inches(2), Inches(8), Inches(0.4 * (rows+1))).table
-        for c, col_name in enumerate(df.columns):
-            table_shape.cell(0, c).text = str(col_name)
-        for r in range(rows):
-            for c in range(cols):
-                val = df.iloc[r, c]
-                if pd.isna(val):
-                    val = "N/A"
-                elif isinstance(val, float):
-                    val = f"{val:.4f}"
-                table_shape.cell(r + 1, c).text = str(val)
-                
-    for fig_title, fig in figs_dict.items():
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = fig_title
-        try:
-            img_bytes = fig.to_image(format="png", width=800, height=500)
-            img_buffer = io.BytesIO(img_bytes)
-            slide.shapes.add_picture(img_buffer, Inches(1), Inches(1.5), width=Inches(8))
-        except Exception as e:
-            txBox = slide.shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1))
-            txBox.text_frame.text = f"Erreur export image: {e}"
-        
-    buffer = io.BytesIO()
-    prs.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-def create_nexo_presentation_pptx(asset_name, desc, left_data, nexo_data, right_df, fig, template_name="template_nexo.pptx"):
-    import os, io
-    from pptx import Presentation
-    from pptx.util import Inches
-    from pptx.dml.color import RGBColor
-
-    def hex_to_rgb(hex_str):
-        hex_str = hex_str.lstrip('#')
-        if hex_str == "gray": return RGBColor(128, 128, 128)
-        return RGBColor(*tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4)))
-
-    def set_text(obj, text):
-        tf = getattr(obj, 'text_frame', None)
-        if tf is None: return
-        if not tf.paragraphs: return
-        p = tf.paragraphs[0]
-        if p.runs:
-            p.runs[0].text = str(text)
-            for r in p.runs[1:]: r.text = ''
-        else:
-            p.text = str(text)
-
-    template_path = os.path.join(os.path.dirname(__file__), template_name)
-    if not os.path.exists(template_path):
-        prs = Presentation()
-        prs.slides.add_slide(prs.slide_layouts[6])
-        buffer = io.BytesIO()
-        prs.save(buffer)
-        buffer.seek(0)
-        return buffer
-
-    prs = Presentation(template_path)
-    slide = prs.slides[0]
-
-    try: set_text(slide.shapes[1].shapes[0], asset_name)
-    except: pass
-        
-    try: set_text(slide.shapes[2], desc)
-    except: pass
-
-    table_left, table_nexo, table_right, chart_shape = None, None, None, None
-    for shape in slide.shapes:
-        if shape.has_table:
-            cols = len(shape.table.columns)
-            if cols == 2: table_left = shape.table
-            elif cols == 3: table_nexo = shape.table
-            elif cols >= 4: table_right = shape.table
-        elif shape.shape_type == 3:
-            chart_shape = shape
-
-    try:
-        if table_left:
-            for r in range(len(table_left.rows)):
-                if r < len(left_data):
-                    row_data = left_data[r]
-                    for c, val in enumerate(row_data):
-                        if c < len(table_left.columns):
-                            set_text(table_left.cell(r, c), val)
-                else:
-                    for c in range(len(table_left.columns)):
-                        set_text(table_left.cell(r, c), "")
-    except: pass
-
-    if nexo_data and table_nexo:
-        try:
-            if len(table_nexo.rows) > 1 and len(table_nexo.columns) >= 2:
-                set_text(table_nexo.cell(1, 1), "Poids du Décrément")
-            for c, item in enumerate(nexo_data):
-                val, color_hex = item
-                if c < len(table_nexo.columns):
-                    cell = table_nexo.cell(2, c)
-                    set_text(cell, val)
-                    if cell.text_frame.paragraphs and cell.text_frame.paragraphs[0].runs:
-                        cell.text_frame.paragraphs[0].runs[0].font.color.rgb = hex_to_rgb(color_hex)
-        except: pass
-
-    try:
-        if table_right:
-            rows, cols = right_df.shape
-            for r in range(rows):
-                for c in range(cols):
-                    if r + 1 < len(table_right.rows) and c < len(table_right.columns):
-                        val = right_df.iloc[r, c]
-                        if val != "MERGE":
-                            set_text(table_right.cell(r + 1, c), val)
-    except: pass
-
-    try:
-        if chart_shape:
-            left, top, width, height = chart_shape.left, chart_shape.top, chart_shape.width, chart_shape.height
-            
-            img_bytes = fig.to_image(format="png", width=600, height=350)
-            img_buffer = io.BytesIO(img_bytes)
-            
-            sp = chart_shape._element
-            sp.getparent().remove(sp)
-            
-            slide.shapes.add_picture(img_buffer, left, top, width, height)
-    except Exception as e:
-        pass
-
-    buffer = io.BytesIO()
-    prs.save(buffer)
-    buffer.seek(0)
-    return buffer
+repo = UniverseRepository(engine=engine)
 
 # 2. Récupération et mise en cache des données
 @st.cache_data(ttl=3600*24)
 def load_assets():
-    with engine.connect() as conn:
-        df = pd.read_sql("SELECT * FROM asset", conn)
-        df['sector'] = df['sector'].str.strip()
-        df.loc[df['sector'].str.contains('multi', case=False, na=False), 'sector'] = 'Multi-secteurs'
-        df.loc[df['sector'].str.contains('diversifi', case=False, na=False), 'sector'] = 'Multi-secteurs'
-        return df
+    return repo.fetch_assets_from_db()
 
 @st.cache_data(ttl=3600*24)
 def load_all_prices():
-    with engine.connect() as conn:
-        df = pd.read_sql("SELECT asset_id, date, close FROM historical_price", conn)
-        df['date'] = pd.to_datetime(df['date'])
-        pivot = df.pivot(index='date', columns='asset_id', values='close')
-        pivot = pivot.sort_index().ffill()
-        return pivot
+    return repo.fetch_prices_from_db()
 
 @st.cache_data(ttl=3600*24)
 def compute_screener_metrics(assets_df, prices_pivot):
-    if prices_pivot.empty:
-        return assets_df
-    
-    date_now = prices_pivot.index[-1]
-    last_prices = prices_pivot.iloc[-1]
-    
-    # Performances (1M, YTD, 1A)
-    dates_1m = prices_pivot.index[prices_pivot.index <= date_now - pd.Timedelta(days=30)]
-    p_1m = prices_pivot.loc[dates_1m[-1]] if len(dates_1m) > 0 else pd.Series(np.nan, index=prices_pivot.columns)
-    perf_1m = ((last_prices / p_1m) - 1) * 100
-
-    dates_ytd = prices_pivot.index[prices_pivot.index <= pd.Timestamp(year=date_now.year - 1, month=12, day=31)]
-    p_ytd = prices_pivot.loc[dates_ytd[-1]] if len(dates_ytd) > 0 else pd.Series(np.nan, index=prices_pivot.columns)
-    perf_ytd = ((last_prices / p_ytd) - 1) * 100
-
-    dates_1y = prices_pivot.index[prices_pivot.index <= date_now - pd.Timedelta(days=365)]
-    p_1y = prices_pivot.loc[dates_1y[-1]] if len(dates_1y) > 0 else pd.Series(np.nan, index=prices_pivot.columns)
-    perf_1y = ((last_prices / p_1y) - 1) * 100
-
-    dates_2y = prices_pivot.index[prices_pivot.index <= date_now - pd.Timedelta(days=365*2)]
-    p_2y = prices_pivot.loc[dates_2y[-1]] if len(dates_2y) > 0 else pd.Series(np.nan, index=prices_pivot.columns)
-    perf_2y = pd.Series(np.nan, index=prices_pivot.columns)
-    valid_mask = (p_2y > 0) & p_2y.notna() & last_prices.notna()
-    perf_2y[valid_mask] = ((last_prices[valid_mask] / p_2y[valid_mask]) ** (1/2) - 1) * 100
-
-    # Volatilités annualisées (3 Mois et 1 An)
-    daily_returns = prices_pivot.pct_change(fill_method=None)
-    returns_3m = daily_returns.loc[daily_returns.index >= date_now - pd.Timedelta(days=90)]
-    vol_3m = returns_3m.std() * np.sqrt(252) * 100
-
-    returns_1y = daily_returns.loc[daily_returns.index >= date_now - pd.Timedelta(days=365)]
-    vol_1y = returns_1y.std() * np.sqrt(252) * 100
-
-    # Max Drawdown 1 An
-    prices_1y = prices_pivot.loc[prices_pivot.index >= date_now - pd.Timedelta(days=365)]
-    cummax_1y = prices_1y.cummax()
-    drawdown_1y = (prices_1y - cummax_1y) / cummax_1y
-    max_dd_1y = drawdown_1y.min() * 100
-
-    # Écartement aux Moyennes Mobiles (SMA 50 et SMA 200)
-    sma50 = prices_pivot.rolling(50, min_periods=5).mean().iloc[-1]
-    sma200 = prices_pivot.rolling(200, min_periods=20).mean().iloc[-1]
-    dist_sma50 = ((last_prices / sma50) - 1) * 100
-    dist_sma200 = ((last_prices / sma200) - 1) * 100
-
-    metrics_df = pd.DataFrame({
-        'asset_id': prices_pivot.columns,
-        'last_price': last_prices.values,
-        'perf_1m': perf_1m.values,
-        'perf_ytd': perf_ytd.values,
-        'perf_1y': perf_1y.values,
-        'perf_2y': perf_2y.values,
-        'vol_3m': vol_3m.values,
-        'vol_1y': vol_1y.values,
-        'max_dd_1y': max_dd_1y.values,
-        'dist_sma50': dist_sma50.values,
-        'dist_sma200': dist_sma200.values
-    })
-
-    merged = pd.merge(assets_df, metrics_df, on='asset_id', how='left')
-    return merged
+    return ScreenerEngine.compute_metrics(assets_df, prices_pivot)
 
 with st.spinner("Chargement des données en cours..."):
     assets_df = load_assets()
@@ -382,50 +157,20 @@ with tab_screener:
 
     filter_only_priced = st.checkbox("Masquer les actifs sans historique de cours", value=True)
 
-    # Application des filtres
-    df_filtered = screener_raw_df.copy()
-
-    if search_query:
-        mask_search = (
-            df_filtered['name'].astype(str).str.lower().str.contains(search_query, na=False) |
-            df_filtered['ticker_bloomberg'].astype(str).str.lower().str.contains(search_query, na=False) |
-            df_filtered['isin'].astype(str).str.lower().str.contains(search_query, na=False)
-        )
-        df_filtered = df_filtered[mask_search]
-
-    if sel_types:
-        df_filtered = df_filtered[df_filtered['asset_type'].isin(sel_types)]
-    if sel_subtypes:
-        df_filtered = df_filtered[df_filtered['asset_subtype'].isin(sel_subtypes)]
-    if sel_sectors:
-        df_filtered = df_filtered[df_filtered['sector'].isin(sel_sectors)]
-    if sel_countries:
-        df_filtered = df_filtered[df_filtered['country'].isin(sel_countries)]
-    if sel_currencies:
-        df_filtered = df_filtered[df_filtered['currency'].isin(sel_currencies)]
-
-    if filter_only_priced:
-        df_filtered = df_filtered[df_filtered['last_price'].notna() & (df_filtered['last_price'] > 0)]
+    # Application des filtres via UniverseRepository
+    df_filtered = repo.filter_universe(
+        search_query=search_query,
+        sel_types=sel_types,
+        sel_subtypes=sel_subtypes,
+        sel_sectors=sel_sectors,
+        sel_countries=sel_countries,
+        sel_currencies=sel_currencies,
+        filter_only_priced=filter_only_priced,
+        base_df=screener_raw_df
+    )
 
     # Sélection et renommage des colonnes épurées
-    columns_mapping = {
-        'name': 'Nom',
-        'ticker_bloomberg': 'Ticker Bloomberg',
-        'isin': 'ISIN',
-        'sector': 'Secteur',
-        'currency': 'Devise',
-        'last_price': 'Dernier Cours',
-        'perf_1m': 'Perf 1M (%)',
-        'perf_ytd': 'Perf YTD (%)',
-        'perf_1y': 'Perf 1A (%)',
-        'perf_2y': 'Perf 2A (%)',
-        'vol_3m': 'Vol 3M (%)',
-        'vol_1y': 'Vol 1A (%)',
-        'max_dd_1y': 'Max DD 1A (%)',
-        'dist_sma50': 'Écart SMA 50 (%)',
-        'dist_sma200': 'Écart SMA 200 (%)'
-    }
-
+    columns_mapping = ScreenerEngine.COLUMNS_MAPPING
     cols_to_keep = [c for c in columns_mapping.keys() if c in df_filtered.columns]
     table_display = df_filtered[cols_to_keep].rename(columns=columns_mapping)
 
@@ -569,24 +314,18 @@ with tab_compare:
                 cutoff_start = pd.to_datetime(custom_start)
                 cutoff_end = pd.to_datetime(custom_end)
                 
-            compare_prices = compare_prices[(compare_prices.index >= cutoff_start) & (compare_prices.index <= cutoff_end)]
+            # Instanciation de BasketAnalytics
+            basket_model = BasketAnalytics(valid_ids, asset_options, prices_pivot, cutoff_start, cutoff_end)
             
-            # Trouver la date de départ commune (max des dates de début individuelles)
-            start_dates = compare_prices.apply(lambda x: x.first_valid_index())
-            common_start_date = start_dates.max()
-            
-            if pd.isna(common_start_date):
+            if pd.isna(basket_model.common_start_date) or basket_model.base_100_prices.empty:
                 st.warning("Aucune période commune trouvée entre ces actifs pour la période sélectionnée.")
             else:
+                common_start_date = basket_model.common_start_date
                 if common_start_date > cutoff_start:
                     st.info(f"Point de départ commun calé au {common_start_date.strftime('%d/%m/%Y')} (première date où tous les actifs sélectionnés cotent ensemble).")
 
-                # Filtrer depuis la date de départ commune
-                compare_prices_common = compare_prices[compare_prices.index >= common_start_date]
-                
-                # Rebaser en base 100
-                first_prices = compare_prices_common.iloc[0]
-                base_100_prices = (compare_prices_common / first_prices) * 100
+                base_100_prices = basket_model.base_100_prices
+                compare_prices_common = basket_model.compare_prices_common
                 
                 fig = go.Figure()
                 for aid in valid_ids:
@@ -617,12 +356,7 @@ with tab_compare:
                 
                 # Petit tableau récapitulatif des performances
                 st.markdown(f"**Performance depuis le point commun ({common_start_date.strftime('%d/%m/%Y')})**")
-                perf_series = (base_100_prices.iloc[-1] - 100)
-                perf_df = perf_series.reset_index()
-                perf_df.columns = ['asset_id', 'Performance']
-                id_to_name = {v: k for k, v in asset_options.items()}
-                perf_df['Actif'] = perf_df['asset_id'].map(id_to_name)
-                perf_df = perf_df[['Actif', 'Performance']].sort_values(by='Performance', ascending=False)
+                perf_df = basket_model.compute_performance_table()
                 
                 st.dataframe(
                     perf_df.style.format({'Performance': "{:.2f} %"}),
@@ -635,10 +369,8 @@ with tab_compare:
                 fig_vol_comp = go.Figure()
                 for aid in valid_ids:
                     name_disp = [k for k, v in asset_options.items() if v == aid][0]
-                    # Retrait des zéros éventuels (absence de données) avant le calcul
                     clean_prices = compare_prices_common[aid].replace(0, np.nan).dropna()
                     asset_returns = clean_prices.pct_change()
-                    # min_periods=252 garantit que le graph ne commence qu'après 1 an complet de données
                     roll_vol = asset_returns.rolling(window=252, min_periods=252).std() * np.sqrt(252) * 100
                     
                     fig_vol_comp.add_trace(go.Scatter(
@@ -682,7 +414,7 @@ with tab_compare:
                     )
                     selected_bench_id = bench_options[selected_bench_name]
 
-                    basket_prices = base_100_prices.mean(axis=1)
+                    basket_prices = basket_model.basket_prices
                     
                     fig_basket = go.Figure()
                     fig_basket.add_trace(go.Scatter(
@@ -693,21 +425,18 @@ with tab_compare:
                         line=dict(width=3, color='#FF9900')
                     ))
                     
-                    bench_series_sub = None
-                    if selected_bench_id is not None:
-                        bench_raw = prices_pivot[selected_bench_id].dropna()
-                        bench_sub = bench_raw[(bench_raw.index >= common_start_date) & (bench_raw.index <= compare_prices_common.index.max())]
-                        
-                        if len(bench_sub) > 0:
-                            bench_base_100 = (bench_sub / bench_sub.iloc[0]) * 100
-                            bench_series_sub = bench_sub
-                            fig_basket.add_trace(go.Scatter(
-                                x=bench_base_100.index,
-                                y=bench_base_100,
-                                mode='lines',
-                                name=f"Benchmark ({selected_bench_name})",
-                                line=dict(width=2, color='#00d2ff', dash='dash')
-                            ))
+                    df_comp, bench_base_100, beta_disp, comb_ret = basket_model.compute_basket_comparison(
+                        selected_bench_id, selected_bench_name, prices_pivot
+                    )
+
+                    if bench_base_100 is not None:
+                        fig_basket.add_trace(go.Scatter(
+                            x=bench_base_100.index,
+                            y=bench_base_100,
+                            mode='lines',
+                            name=f"Benchmark ({selected_bench_name})",
+                            line=dict(width=2, color='#00d2ff', dash='dash')
+                        ))
                     
                     fig_basket.update_layout(
                         hovermode="x unified",
@@ -726,85 +455,25 @@ with tab_compare:
                     
                     st.plotly_chart(fig_basket, use_container_width=True)
                     
-                    basket_perf = basket_prices.iloc[-1] - 100
-                    if selected_bench_id is not None and bench_series_sub is not None and len(bench_series_sub) > 0:
-                        bench_perf = (bench_series_sub.iloc[-1] / bench_series_sub.iloc[0] - 1) * 100
-                        spread_perf = basket_perf - bench_perf
-                        
-                        # Calcul du Bêta du Panier vs Benchmark sur la période
-                        basket_ret = basket_prices.pct_change(fill_method=None).dropna()
-                        bench_ret = bench_series_sub.pct_change(fill_method=None).dropna()
-                        comb_ret = pd.DataFrame({'Panier': basket_ret, 'Benchmark': bench_ret}).dropna()
-                        
-                        if len(comb_ret) >= 5 and comb_ret['Benchmark'].var() > 0:
-                            basket_beta = comb_ret['Panier'].cov(comb_ret['Benchmark']) / comb_ret['Benchmark'].var()
-                            beta_disp = f"{basket_beta:.2f}"
-                        else:
-                            beta_disp = "N/A"
-                        # Volatilité Historique Annualisée
-                        basket_vol = basket_ret.std(ddof=1) * np.sqrt(252) * 100 if len(basket_ret) > 1 else np.nan
-                        bench_vol = bench_ret.std(ddof=1) * np.sqrt(252) * 100 if len(bench_ret) > 1 else np.nan
-                        spread_vol = basket_vol - bench_vol if pd.notna(basket_vol) and pd.notna(bench_vol) else np.nan
-                        
-                        # Max Drawdown
-                        cummax_basket = basket_prices.cummax()
-                        dd_basket = (basket_prices - cummax_basket) / cummax_basket
-                        basket_mdd = dd_basket.min() * 100
-                        
-                        cummax_bench = bench_series_sub.cummax()
-                        dd_bench = (bench_series_sub - cummax_bench) / cummax_bench
-                        bench_mdd = dd_bench.min() * 100
-                        spread_mdd = basket_mdd - bench_mdd
-
-                        # Bêta affiché en dehors du tableau
+                    basket_perf = basket_prices.iloc[-1] - 100.0
+                    if df_comp is not None:
                         col_beta_box, _ = st.columns([1, 2])
                         with col_beta_box:
                             st.metric("Bêta du Panier (vs Benchmark)", beta_disp)
-
-                        # Tableau comparatif
-                        bench_col_title = f"Benchmark ({selected_bench_name})"
-                        comp_data = {
-                            "Métrique": [
-                                "Performance Globale",
-                                "Volatilité Historique (ann.)",
-                                "Max Drawdown"
-                            ],
-                            "Panier Équipondéré": [
-                                f"{basket_perf:+.2f} %",
-                                f"{basket_vol:.2f} %" if pd.notna(basket_vol) else "N/A",
-                                f"{basket_mdd:.2f} %" if pd.notna(basket_mdd) else "N/A"
-                            ],
-                            bench_col_title: [
-                                f"{bench_perf:+.2f} %",
-                                f"{bench_vol:.2f} %" if pd.notna(bench_vol) else "N/A",
-                                f"{bench_mdd:.2f} %" if pd.notna(bench_mdd) else "N/A"
-                            ],
-                            "Écart": [
-                                f"{spread_perf:+.2f} %",
-                                f"{spread_vol:+.2f} %" if pd.notna(spread_vol) else "N/A",
-                                f"{spread_mdd:+.2f} %" if pd.notna(spread_mdd) else "N/A"
-                            ]
-                        }
-                        df_comp = pd.DataFrame(comp_data)
                         st.dataframe(df_comp, hide_index=True, use_container_width=True)
                     else:
                         st.metric(label="Performance globale du Panier", value=f"{basket_perf:+.2f} %")
 
                     # --- Corrélation Rolling 1 An : Panier vs Benchmark ---
-                    if selected_bench_id is not None and bench_series_sub is not None and len(bench_series_sub) > 0:
+                    if selected_bench_id is not None and comb_ret is not None:
                         st.subheader("Corrélation Rolling 1 An : Panier vs Benchmark")
                         st.markdown(f"Évolution de la corrélation glissante des rendements quotidiens sur 1 an (252 jours) entre le Panier Équipondéré et **{selected_bench_name}**.")
-                        
-                        basket_ret = basket_prices.pct_change(fill_method=None).dropna()
-                        bench_ret = bench_series_sub.pct_change(fill_method=None).dropna()
-                        comb_ret = pd.DataFrame({'Panier': basket_ret, 'Benchmark': bench_ret}).dropna()
                         
                         if len(comb_ret) >= 30:
                             min_periods_corr = 252 if len(comb_ret) >= 252 else max(20, len(comb_ret) // 2)
                             roll_corr_bb = comb_ret['Panier'].rolling(window=252, min_periods=min_periods_corr).corr(comb_ret['Benchmark'])
                             
                             fig_basket_bench_corr = go.Figure()
-                            # Ligne horizontale de référence à 0
                             fig_basket_bench_corr.add_hline(
                                 y=0, line_dash="dash", line_color="rgba(128, 128, 128, 0.4)", line_width=1
                             )
@@ -851,7 +520,6 @@ with tab_compare:
                     fig_corr = go.Figure()
                     pairs = list(itertools.combinations(valid_ids, 2))
                     
-                    # On limite à 10 paires pour éviter un graphique illisible si on sélectionne trop d'actifs
                     for aid1, aid2 in pairs[:10]:
                         name1 = [k for k, v in asset_options.items() if v == aid1][0]
                         name2 = [k for k, v in asset_options.items() if v == aid2][0]
@@ -902,6 +570,7 @@ with tab_compare:
                     if "compare_exports" in st.session_state:
                         st.download_button("Télécharger Excel", st.session_state["compare_exports"]["excel"], file_name="comparaison.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                         st.download_button("Télécharger PowerPoint", st.session_state["compare_exports"]["pptx"], file_name="comparaison.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
 
 # ==========================================
 # ONGLET 2 : FICHE DETAILLEE ACTIF
@@ -977,173 +646,44 @@ with tab_detail:
         st.warning("Aucun historique de prix valide (non nul) disponible pour cet actif.")
         st.stop()
 
-    daily_returns = asset_prices.pct_change(fill_method=None).dropna()
-    current_date = asset_prices.index.max()
-    current_price = asset_prices.iloc[-1]
-    start_of_year = pd.Timestamp(year=current_date.year, month=1, day=1)
+    # Résolution automatique du benchmark régional
+    bench_id_auto, bench_ticker_auto, bench_prices_auto = repo.get_benchmark_for_asset(asset_info)
 
-    def get_price_at(date_target):
-        available_dates = asset_prices[asset_prices.index <= date_target]
-        if len(available_dates) == 0:
-            return np.nan
-        return available_dates.iloc[-1]
-
-    def get_perf(days=None, ytd=False):
-        if ytd:
-            end_of_prev_year = pd.Timestamp(year=current_date.year - 1, month=12, day=31)
-            old_price = get_price_at(end_of_prev_year)
-        else:
-            old_price = get_price_at(current_date - pd.Timedelta(days=days))
-        
-        if pd.isna(old_price): return np.nan
-        return ((current_price / old_price) - 1) * 100
-
-    def get_vol(days=None, ytd=False):
-        if ytd:
-            end_of_prev_year = pd.Timestamp(year=current_date.year - 1, month=12, day=31)
-            sub_returns = daily_returns[daily_returns.index > end_of_prev_year]
-        else:
-            sub_returns = daily_returns[daily_returns.index >= current_date - pd.Timedelta(days=days)]
-        
-        if len(sub_returns) < 2: return np.nan
-        return sub_returns.std() * np.sqrt(252) * 100
-
-    # --- Résolution du Benchmark (pour le Bêta et le Graphique) ---
-    benchmark_mapping = {
-        'FRANCE': 'CAC Index',
-        'GERMANY': 'DAX Index', 'ALLEMAGNE': 'DAX Index',
-        'US': 'SPX Index', 'USA': 'SPX Index', 'UNITED STATES': 'SPX Index', 'AMÉRIQUE DU NORD': 'SPX Index',
-        'ÉTATS-UNIS': 'SPX Index', 'ÉTATS UNIS': 'SPX Index', 'ETATS-UNIS': 'SPX Index', 'ETATS UNIS': 'SPX Index',
-        'BRITAIN': 'UKX Index', 'ROYAUME-UNI': 'UKX Index',
-        'SWITZERLAND': 'SMI Index', 'SUISSE': 'SMI Index',
-        'JAPAN': 'NKY Index', 'JAPON': 'NKY Index',
-        'CHINE': 'SHSZ300 INDEX', 'CHINA': 'SHSZ300 INDEX',
-        'HONG KONG': 'HSI Index', 'MACAU': 'HSI Index',
-        'EUROPE': 'SX5E Index', 'EURO ZONE': 'SX5E Index', 'ZONE EURO': 'SX5E Index',
-        'ITALY': 'SX5E Index', 'ITALIE': 'SX5E Index',
-        'SPAIN': 'SX5E Index', 'ESPAGNE': 'SX5E Index',
-        'PORTUGAL': 'SX5E Index', 'MALTA': 'SX5E Index',
-        'BELGIQUE': 'SX5E Index', 'BELGIUM': 'SX5E Index',
-        'NETHERLANDS': 'SX5E Index', 'PAYS-BAS': 'SX5E Index',
-        'LUXEMBOURG': 'SX5E Index',
-        'SWEDEN': 'SX5E Index', 'SUÈDE': 'SX5E Index', 'SUEDE': 'SX5E Index',
-        'DENMARK': 'SX5E Index', 'DANEMARK': 'SX5E Index',
-        'NORWAY': 'SX5E Index', 'NORVÈGE': 'SX5E Index', 'NORVEGE': 'SX5E Index',
-        'FINLAND': 'SX5E Index', 'FINLANDE': 'SX5E Index',
-        'FAROE ISLANDS': 'SX5E Index', 'ÎLES FÉROÉ': 'SX5E Index', 'ILES FEROE': 'SX5E Index',
-        'AUSTRIA': 'SX5E Index', 'AUTRICHE': 'SX5E Index',
-        'CZECH': 'SX5E Index', 'RÉPUBLIQUE TCHÈQUE': 'SX5E Index', 'REPUBLIQUE TCHEQUE': 'SX5E Index',
-        'POLAND': 'SX5E Index', 'POLOGNE': 'SX5E Index',
-        'HUNGARY': 'SX5E Index', 'HONGRIE': 'SX5E Index',
-        'IRELAND': 'SX5E Index', 'IRLANDE': 'SX5E Index',
-        'MONDE': 'MSCI WORLD Index', 
-        'WORLD': 'MSCI WORLD Index', 
-        'MONDE - MARCHÉS ÉMERGENTS': 'MSCI WORLD Index',
-        'BERMUDA': 'MSCI WORLD Index', 
-        'TRANSATLANTIC': 'MSCI WORLD Index', 
-        'TRANSATLANTIQUE': 'MSCI WORLD Index',
-        'EUROPE - US - JAPON': 'MSCI WORLD Index', 'EUROPE - ÉTATS-UNIS - JAPON': 'MSCI WORLD Index', 'EUROPE - ETATS-UNIS - JAPON': 'MSCI WORLD Index',
-        'ASIE - US': 'MSCI WORLD Index', 'ASIE - ÉTATS-UNIS': 'MSCI WORLD Index', 'ASIE - ETATS-UNIS': 'MSCI WORLD Index',
-        'EURASIE': 'MSCI WORLD Index',
-        'EURO-ASIE': 'MSCI WORLD Index',
-        'EUROPE - ASIE': 'MSCI WORLD Index',
-        'CHINE - EUROPE': 'MSCI WORLD Index',
-        'ASIE': 'MSCI AC ASIA PACIFIC Index', 
-        'AUSTRALIA': 'MSCI AC ASIA PACIFIC Index',
-        'MARCHÉS ÉMERGENTS': 'MSCI EM Index', 'MARCHES EMERGENTS': 'MSCI EM Index',
-        'BRAZIL': 'MSCI EM Index', 'BRÉSIL': 'MSCI EM Index', 'BRESIL': 'MSCI EM Index',
-        'CHILE': 'MSCI EM Index', 'CHILI': 'MSCI EM Index',
-        'JORDAN': 'MSCI EM Index', 
-        'KAZAKHSTAN': 'MSCI EM Index', 
-        'RUSSIA': 'MSCI EM Index', 'RUSSIE': 'MSCI EM Index'
-    }
-
-    asset_country = str(asset_info.get('country', '')).strip().upper()
-    benchmark_ticker = benchmark_mapping.get(asset_country)
-    benchmark_asset_id = None
-
-    if benchmark_ticker:
-        bench_match = assets_df[assets_df['ticker_bloomberg'] == benchmark_ticker]
-        if not bench_match.empty:
-            benchmark_asset_id = bench_match.iloc[0]['asset_id']
-
-    def get_beta(days=365):
-        if not benchmark_asset_id or benchmark_asset_id not in prices_pivot.columns:
-            return np.nan
-        bench_prices = prices_pivot[benchmark_asset_id].dropna()
-        bench_prices = bench_prices[bench_prices > 0]
-        if len(bench_prices) == 0: return np.nan
-        bench_returns = bench_prices.pct_change(fill_method=None).dropna()
-        
-        # Aligner les dates
-        cutoff_date = current_date - pd.Timedelta(days=days)
-        sub_asset = daily_returns[daily_returns.index >= cutoff_date]
-        sub_bench = bench_returns[bench_returns.index >= cutoff_date]
-        
-        common_dates = sub_asset.index.intersection(sub_bench.index)
-        if len(common_dates) < 20: # Il faut un minimum de jours
-            return np.nan
-            
-        aligned_asset = sub_asset.loc[common_dates]
-        aligned_bench = sub_bench.loc[common_dates]
-        
-        cov = aligned_asset.cov(aligned_bench)
-        var = aligned_bench.var()
-        if var == 0: return np.nan
-        return cov / var
-
-    # --- Scoring Décrément ---
-    def extract_decrement(name):
-        import re
-        m_pct = re.search(r'(\d+(?:[.,]\d+)?)\s*%', name)
-        if m_pct: return float(m_pct.group(1).replace(',', '.')), 'PERCENT'
-        m_dnp = re.search(r'(?i)d\s*(\d+(?:[.,]\d+)?)\s*p', name)
-        if m_dnp: return float(m_dnp.group(1).replace(',', '.')), 'POINTS'
-        m_dec = re.search(r'(?i)(?:decrement|decr\.?)\s*(\d+(?:[.,]\d+)?)', name)
-        if m_dec: return float(m_dec.group(1).replace(',', '.')), 'POINTS'
-        m_num = re.search(r'(?i)(\d+(?:[.,]\d+)?)\s*(?:points?|pts?|pt|point\(s\))?\s*decr', name)
-        if m_num: return float(m_num.group(1).replace(',', '.')), 'POINTS'
-        return None, None
-
-    asset_name_str = str(asset_info.get('name', ''))
-    asset_type_str = str(asset_info.get('asset_type', '')).strip().lower()
-    asset_subtype_str = str(asset_info.get('asset_subtype', '')).strip().lower()
-    
-    # Ne calculer le décrément et le score Nexo QUE pour les indices ou s'il s'agit explicitement d'un sous-type "décrément"
-    is_indice_or_decrement = (
-        'indice' in asset_type_str or 
-        'indice' in asset_subtype_str or 
-        'décrément' in asset_subtype_str or 
-        'decrement' in asset_subtype_str
+    # Instanciation de DecrementAnalytics (qui hérite de AssetAnalytics)
+    asset_model = DecrementAnalytics(
+        asset_id=selected_asset_id,
+        info=asset_info.to_dict(),
+        prices=asset_prices,
+        benchmark_id=bench_id_auto,
+        benchmark_ticker=bench_ticker_auto,
+        benchmark_prices=bench_prices_auto
     )
-    
-    if is_indice_or_decrement:
-        dec_val, dec_type = extract_decrement(asset_name_str)
-    else:
-        dec_val, dec_type = None, None
-    
 
+    current_date = asset_model.current_date
+    current_price = asset_model.current_price
+    benchmark_ticker = asset_model.benchmark_ticker
+    benchmark_asset_id = asset_model.benchmark_id
 
     # --- 2. Tableaux Perf / Vol / Bêta ---
     st.subheader(f"Performances et Risques (Dernier cours : {current_price:.2f})")
 
     perf_data = {
-        "5 Jours": get_perf(days=5),
-        "1 Mois": get_perf(days=30),
-        "3 Mois": get_perf(days=90),
-        "YTD": get_perf(ytd=True),
+        "5 Jours": asset_model.perf(days=5),
+        "1 Mois": asset_model.perf(days=30),
+        "3 Mois": asset_model.perf(days=90),
+        "YTD": asset_model.perf(ytd=True),
     }
 
     vol_data = {
-        "1 Mois": get_vol(days=30),
-        "3 Mois": get_vol(days=90),
-        "YTD": get_vol(ytd=True),
-        "1 An": get_vol(days=365),
+        "1 Mois": asset_model.vol(days=30),
+        "3 Mois": asset_model.vol(days=90),
+        "YTD": asset_model.vol(ytd=True),
+        "1 An": asset_model.vol(days=365),
     }
     
     beta_data = {
-        "1 An": get_beta(days=365),
-        "3 Ans": get_beta(days=365*3),
+        "1 An": asset_model.beta(days=365),
+        "3 Ans": asset_model.beta(days=365*3),
     }
 
     col_perf, col_vol, col_beta = st.columns(3)
@@ -1165,7 +705,6 @@ with tab_detail:
         st.markdown(f"**Bêta (vs {bench_disp})**")
         beta_df = pd.DataFrame([beta_data]).T.reset_index()
         beta_df.columns = ["Période", "Coefficient"]
-        # Streamlit style for handling NaN gracefully
         st.dataframe(beta_df.style.format({"Coefficient": "{:.2f}"}, na_rep="N/A"), use_container_width=True, hide_index=True)
 
     st.divider()
@@ -1196,15 +735,15 @@ with tab_detail:
                 line=dict(color='gray', width=1.5, dash='dot')
             ))
         
-        sma50 = asset_norm.rolling(window=50, min_periods=1).mean()
-        sma200 = asset_norm.rolling(window=200, min_periods=1).mean()
+        sma50 = asset_model.sma(50)
+        sma200 = asset_model.sma(200)
         
         fig.add_trace(go.Scatter(x=asset_norm.index, y=asset_norm, mode='lines', name='Prix', line=dict(width=2)))
         fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
         fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
     else:
-        sma50 = asset_prices.rolling(window=50, min_periods=1).mean()
-        sma200 = asset_prices.rolling(window=200, min_periods=1).mean()
+        sma50 = asset_model.sma(50)
+        sma200 = asset_model.sma(200)
         
         fig.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name='Prix', line=dict(width=2)))
         fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
@@ -1217,9 +756,7 @@ with tab_detail:
 
     # --- 3.5 Volatilité Annuelle Glissante ---
     st.subheader("Volatilité Annualisée (1 An Glissant)")
-    clean_asset_prices = asset_prices.replace(0, np.nan).dropna()
-    asset_returns = clean_asset_prices.pct_change()
-    roll_vol = asset_returns.rolling(window=252, min_periods=252).std() * np.sqrt(252) * 100
+    roll_vol = asset_model.rolling_vol(window_days=252)
     
     fig_vol = go.Figure()
     fig_vol.add_trace(go.Scatter(
@@ -1313,99 +850,21 @@ with tab_detail:
             if pd.notna(bt) and bt.strip() != 'nan':
                 bench_ticker_disp = bt
 
+    asset_name_str = asset_model.asset_name
     st.markdown(f"<h4 style='color: #003366; margin-bottom: 30px;'>{asset_name_str}</h4>", unsafe_allow_html=True)
     
-    # Fonctions pour la présentation
-    def get_perf_ann(days):
-        if len(asset_prices) == 0: return np.nan
-        start_date = current_date - pd.Timedelta(days=days)
-        sub = asset_prices[asset_prices.index >= start_date]
-        if len(sub) == 0: return np.nan
-        old_price = sub.iloc[0]
-        years = days / 365.25
-        if old_price <= 0: return np.nan
-        return ((current_price / old_price) ** (1 / years) - 1) * 100
+    # Calcul des scores NEXO calibrés
+    nexo_scores = asset_model.compute_nexo_scores()
+    note_vol = nexo_scores['vol']
+    note_yield = nexo_scores['yield']
+    note_ecart = nexo_scores['ecart']
+    color_vol = nexo_scores['color_vol']
+    color_yield = nexo_scores['color_yield']
+    color_ecart = nexo_scores['color_ecart']
 
-    def get_max_drawdown(days):
-        start_date = current_date - pd.Timedelta(days=days)
-        sub = asset_prices[asset_prices.index >= start_date]
-        if len(sub) == 0: return np.nan
-        roll_max = sub.cummax()
-        drawdown = sub / roll_max - 1.0
-        return drawdown.min() * 100
-
-    def get_sharpe(days):
-        perf = get_perf_ann(days) if days > 365 else get_perf(days=days)
-        vol = get_vol(days)
-        if pd.isna(perf) or pd.isna(vol) or vol == 0: return np.nan
-        return perf / vol
-        
-    def color_score(score):
-        if score == "N/A": return "gray"
-        if score <= 1: return "#28a745"
-        if score <= 2: return "#85c13f"
-        if score <= 3: return "#ffc107"
-        if score <= 4: return "#fd7e14"
-        return "#dc3545"
-
-    # Notes NEXO (Formules calibrées - Documentation Méthodologique)
-    import math
-    note_yield = "N/A"
-    note_vol = "N/A"
-    note_ecart = "N/A"
-    dec_yield_pct = "N/A"
-    div_2025 = asset_info.get('dividend_yield')
-
-    # 1. Note Volatilité (basée sur la vol annualisée 1 an)
-    vol_1y = get_vol(days=365)
-    if pd.notna(vol_1y):
-        try:
-            x_vol = float(vol_1y)
-            if x_vol <= 15.0:
-                note_vol = 0.0
-            elif x_vol >= 40.0:
-                note_vol = 5.0
-            else:
-                val = 8.68 - 14.53 * math.exp(-0.0343 * x_vol)
-                note_vol = max(0.0, min(5.0, val))
-        except Exception:
-            pass
-
-    # 2. Note Yield & Note Écart (si décrément)
-    if dec_val is not None and pd.notna(current_price) and current_price > 0:
-        if dec_type == 'PERCENT':
-            dec_yield = float(dec_val) / 100.0
-            dec_yield_pct = float(dec_val)
-        else:
-            dec_yield = float(dec_val) / float(current_price)
-            dec_yield_pct = dec_yield * 100.0
-
-        # Note Yield : fittée sur le poids du décrément en %
-        try:
-            x_yield = float(dec_yield_pct)
-            if x_yield <= 4.0:
-                note_yield = 0.0
-            elif x_yield >= 6.90:
-                note_yield = 5.0
-            else:
-                val = -0.69 + 0.0370 * math.exp(0.73 * x_yield)
-                note_yield = max(0.0, min(5.0, val))
-        except Exception:
-            pass
-
-        # Note Écart : fittée sur l'écart de dividende en %
-        if pd.notna(div_2025):
-            try:
-                x_ecart = (float(div_2025) - dec_yield) * 100.0
-                if x_ecart >= 1.0:
-                    note_ecart = 0.0
-                elif x_ecart <= -4.5:
-                    note_ecart = 5.0
-                else:
-                    val = -1.57 + 2.04 * math.exp(-0.26 * x_ecart)
-                    note_ecart = max(0.0, min(5.0, val))
-            except Exception:
-                pass
+    dec_val = asset_model.dec_val
+    dec_yield_pct = asset_model.dec_yield_pct
+    div_2025 = asset_model.dividend_yield
 
     pres_col1, pres_col2 = st.columns([1, 1], gap="large")
     
@@ -1416,7 +875,7 @@ with tab_detail:
             desc = "Description de l'actif non disponible."
         st.markdown(f"<p style='font-size: 13px; text-align: justify; margin-bottom: 25px;'>{desc}</p>", unsafe_allow_html=True)
         
-        div_val_pct = f"{float(div_2025)*100:.2f}%".replace('.', ',') if pd.notna(div_2025) else "N/A"
+        div_val_pct = f"{float(div_2025)*100:.2f}%".replace('.', ',') if pd.notna(div_2025) and div_2025 is not None else "N/A"
         date_str = current_date.strftime('%d/%m/%Y')
         curr_price_str = f"{current_price:.2f}".replace('.', ',') + " pts"
         
@@ -1459,9 +918,9 @@ with tab_detail:
     </tr>
 </table>
         """.format(
-            color_vol=color_score(note_vol), vol_text=f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A",
-            color_yield=color_score(note_yield), yield_text=f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A",
-            color_ecart=color_score(note_ecart), ecart_text=f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A"
+            color_vol=color_vol, vol_text=f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A",
+            color_yield=color_yield, yield_text=f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A",
+            color_ecart=color_ecart, ecart_text=f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A"
         ), unsafe_allow_html=True)
         
         st.markdown("""
@@ -1514,10 +973,10 @@ with tab_detail:
         )
         st.plotly_chart(fig_pres, use_container_width=True, config={'displayModeBar': False})
         
-        perfs = [get_perf_ann(365*10), get_perf_ann(365*5), get_perf(365)]
-        vols = [get_vol(365*10), get_vol(365*5), get_vol(365)]
-        sharpes = [get_sharpe(365*10), get_sharpe(365*5), get_sharpe(365)]
-        drawdowns = [get_max_drawdown(365*10), get_max_drawdown(365*5), get_max_drawdown(365)]
+        perfs = [asset_model.perf_ann(365*10), asset_model.perf_ann(365*5), asset_model.perf(365)]
+        vols = [asset_model.vol(365*10), asset_model.vol(365*5), asset_model.vol(365)]
+        sharpes = [asset_model.sharpe_ratio(365*10), asset_model.sharpe_ratio(365*5), asset_model.sharpe_ratio(365)]
+        drawdowns = [asset_model.max_drawdown(365*10), asset_model.max_drawdown(365*5), asset_model.max_drawdown(365)]
         
         def fmt(v, pct=False):
             if pd.isna(v): return "N/A"
@@ -1691,9 +1150,9 @@ with tab_detail:
             left_data_list.append(["Taux de dividende 2025", f"{div_val_pct}"])
             
         nexo_data_list = [
-            (f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A", color_score(note_vol)),
-            (f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A", color_score(note_yield)),
-            (f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A", color_score(note_ecart))
+            (f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A", color_vol),
+            (f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A", color_yield),
+            (f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A", color_ecart)
         ]
         if benchmark_prices is not None:
             df_right = pd.DataFrame({
