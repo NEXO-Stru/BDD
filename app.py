@@ -1361,12 +1361,12 @@ with tab_detail:
     if pd.notna(vol_1y):
         try:
             x_vol = float(vol_1y)
-            if x_vol <= 18.0:
+            if x_vol <= 15.0:
                 note_vol = 0.0
             elif x_vol >= 40.0:
                 note_vol = 5.0
             else:
-                val = 9.45 - 17.50 * math.exp(-0.0343 * x_vol)
+                val = 8.68 - 14.53 * math.exp(-0.0343 * x_vol)
                 note_vol = max(0.0, min(5.0, val))
         except Exception:
             pass
@@ -1385,10 +1385,10 @@ with tab_detail:
             x_yield = float(dec_yield_pct)
             if x_yield <= 4.0:
                 note_yield = 0.0
-            elif x_yield >= 7.5:
+            elif x_yield >= 6.90:
                 note_yield = 5.0
             else:
-                val = -0.42 + 0.0227 * math.exp(0.73 * x_yield)
+                val = -0.69 + 0.0370 * math.exp(0.73 * x_yield)
                 note_yield = max(0.0, min(5.0, val))
         except Exception:
             pass
@@ -1399,10 +1399,10 @@ with tab_detail:
                 x_ecart = (float(div_2025) - dec_yield) * 100.0
                 if x_ecart >= 1.0:
                     note_ecart = 0.0
-                elif x_ecart <= -5.5:
+                elif x_ecart <= -4.5:
                     note_ecart = 5.0
                 else:
-                    val = -1.17 + 1.51 * math.exp(-0.26 * x_ecart)
+                    val = -1.57 + 2.04 * math.exp(-0.26 * x_ecart)
                     note_ecart = max(0.0, min(5.0, val))
             except Exception:
                 pass
