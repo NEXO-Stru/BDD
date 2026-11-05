@@ -112,6 +112,7 @@ class UniverseRepository:
             df['sector'] = df['sector'].astype(str).str.strip()
             df.loc[df['sector'].str.contains('multi', case=False, na=False), 'sector'] = 'Multi-secteurs'
             df.loc[df['sector'].str.contains('diversifi', case=False, na=False), 'sector'] = 'Multi-secteurs'
+            self.assets_df = df
             return df
 
     def fetch_prices_from_db(self) -> pd.DataFrame:
@@ -123,6 +124,7 @@ class UniverseRepository:
             df['date'] = pd.to_datetime(df['date'])
             pivot = df.pivot(index='date', columns='asset_id', values='close')
             pivot = pivot.sort_index().ffill()
+            self.prices_pivot = pivot
             return pivot
 
     def load_all(self, assets_df: pd.DataFrame = None, prices_pivot: pd.DataFrame = None):
@@ -142,35 +144,54 @@ class UniverseRepository:
                 self.assets_df['name'].fillna('Inconnu') + " (" + self.assets_df['ticker_bloomberg'].fillna('') + ")"
             )
 
-    def get_asset_info(self, asset_id) -> dict:
-        matched = self.assets_df[self.assets_df['asset_id'] == asset_id]
+    def get_asset_info(self, asset_id, assets_df: pd.DataFrame = None) -> dict:
+        target_df = assets_df if assets_df is not None else self.assets_df
+        if target_df is None or target_df.empty or 'asset_id' not in target_df.columns:
+            return {}
+        matched = target_df[target_df['asset_id'] == asset_id]
         if matched.empty:
             return {}
         return matched.iloc[0].to_dict()
 
-    def get_price_series(self, asset_id) -> pd.Series:
-        if asset_id not in self.prices_pivot.columns:
+    def get_price_series(self, asset_id, prices_pivot: pd.DataFrame = None) -> pd.Series:
+        target_prices = prices_pivot if prices_pivot is not None else self.prices_pivot
+        if target_prices is None or target_prices.empty or asset_id not in target_prices.columns:
             return pd.Series(dtype=float)
-        s = self.prices_pivot[asset_id].dropna()
+        s = target_prices[asset_id].dropna()
         return s[s > 0]
 
-    def get_benchmark_for_asset(self, asset_info: dict) -> tuple:
+    def get_benchmark_for_asset(self, asset_info: dict, assets_df: pd.DataFrame = None, prices_pivot: pd.DataFrame = None) -> tuple:
         """Retourne (benchmark_asset_id, benchmark_ticker, benchmark_prices)."""
         country = str(asset_info.get('country', '')).strip().upper()
         ticker_bench = self.BENCHMARK_MAPPING.get(country)
         if not ticker_bench:
             return None, None, None
-        matched = self.assets_df[self.assets_df['ticker_bloomberg'] == ticker_bench]
+
+        target_df = assets_df if assets_df is not None else self.assets_df
+        if target_df is None or target_df.empty or 'ticker_bloomberg' not in target_df.columns:
+            return None, ticker_bench, None
+
+        matched = target_df[target_df['ticker_bloomberg'] == ticker_bench]
         if matched.empty:
             return None, ticker_bench, None
         bench_id = matched.iloc[0]['asset_id']
-        bench_prices = self.get_price_series(bench_id)
+
+        target_prices = prices_pivot if prices_pivot is not None else self.prices_pivot
+        if target_prices is not None and not target_prices.empty and bench_id in target_prices.columns:
+            bench_prices = target_prices[bench_id].dropna()
+            bench_prices = bench_prices[bench_prices > 0]
+        else:
+            bench_prices = self.get_price_series(bench_id, prices_pivot=target_prices)
+
         return bench_id, ticker_bench, bench_prices
 
     def filter_universe(self, search_query: str = "", sel_types=None, sel_subtypes=None,
                         sel_sectors=None, sel_countries=None, sel_currencies=None,
                         filter_only_priced: bool = True, base_df: pd.DataFrame = None) -> pd.DataFrame:
-        df = (base_df if base_df is not None else self.assets_df).copy()
+        target = base_df if base_df is not None else self.assets_df
+        if target is None or target.empty:
+            return pd.DataFrame()
+        df = target.copy()
 
         if search_query:
             q = search_query.strip().lower()

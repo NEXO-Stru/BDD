@@ -116,6 +116,9 @@ with st.spinner("Chargement des données en cours..."):
     # Ajout du display_name pour la recherche (avant le merge des métriques !)
     assets_df['display_name'] = assets_df['name'].fillna('Inconnu') + " (" + assets_df['ticker_bloomberg'].fillna('') + ")"
     
+    # Synchronisation du repository avec les données chargées en cache Streamlit
+    repo.load_all(assets_df=assets_df, prices_pivot=prices_pivot)
+    
     screener_raw_df = compute_screener_metrics(assets_df, prices_pivot)
 
 asset_options = dict(zip(assets_df['display_name'], assets_df['asset_id']))
@@ -647,7 +650,9 @@ with tab_detail:
         st.stop()
 
     # Résolution automatique du benchmark régional
-    bench_id_auto, bench_ticker_auto, bench_prices_auto = repo.get_benchmark_for_asset(asset_info)
+    bench_id_auto, bench_ticker_auto, bench_prices_auto = repo.get_benchmark_for_asset(
+        asset_info, assets_df=assets_df, prices_pivot=prices_pivot
+    )
 
     # Instanciation de DecrementAnalytics (qui hérite de AssetAnalytics)
     asset_model = DecrementAnalytics(
