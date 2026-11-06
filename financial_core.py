@@ -443,12 +443,15 @@ class DecrementAnalytics(AssetAnalytics):
         # Calcul du rendement effectif du décrément sur le spot
         self.dec_yield = None
         self.dec_yield_pct = "N/A"
-        if self.dec_val is not None and pd.notna(self.current_price) and self.current_price > 0:
+        if self.dec_val is not None:
             if self.dec_type == 'PERCENT':
                 self.dec_yield = float(self.dec_val) / 100.0
                 self.dec_yield_pct = float(self.dec_val)
-            else:
+            elif pd.notna(self.current_price) and self.current_price > 0:
                 self.dec_yield = float(self.dec_val) / float(self.current_price)
+                self.dec_yield_pct = self.dec_yield * 100.0
+            elif self.info.get('last_price') and float(self.info.get('last_price')) > 0:
+                self.dec_yield = float(self.dec_val) / float(self.info.get('last_price'))
                 self.dec_yield_pct = self.dec_yield * 100.0
 
     @staticmethod
@@ -539,6 +542,8 @@ class DecrementAnalytics(AssetAnalytics):
         """Calcule les 3 notes de risque NEXO™ (formules calibrées du 05/11)."""
         # 1. Note Volatilité (1 An)
         vol_1y = self.vol(days=365)
+        if pd.isna(vol_1y) or vol_1y == "N/A":
+            vol_1y = self.info.get('volatility') or self.info.get('vol_1y') or self.info.get('vol_3m')
         note_vol = self.score_volatilite(vol_1y)
 
         # 2. Note Yield & Note Écart (si décrément)
@@ -882,3 +887,68 @@ create_pptx_report = PptxReportGenerator.create_report
 create_nexo_presentation_pptx = NexoPptxGenerator.create_presentation
 extract_decrement = DecrementAnalytics.extract_decrement
 color_score = DecrementAnalytics.color_score
+
+
+# ==============================================================================
+# 6. AFFICHAGE INSTITUTIONNEL : Matrice de Corrélation Tabulaire Classique
+# ==============================================================================
+
+def render_classic_corr_table(corr_df: pd.DataFrame, assets_df: pd.DataFrame = None) -> str:
+    """Génère une table HTML classique et institutionnelle pour la matrice de corrélation."""
+    cols = list(corr_df.columns)
+
+    ticker_map = {}
+    if assets_df is not None and 'ticker_bloomberg' in assets_df.columns:
+        for _, row in assets_df.iterrows():
+            name = str(row.get('name', ''))
+            disp = str(row.get('display_name', name))
+            tb = str(row.get('ticker_bloomberg', ''))
+            if tb and tb != 'nan' and tb != 'None':
+                ticker_map[disp] = tb
+                ticker_map[name] = tb
+
+    html = ['<div style="overflow-x: auto; max-width: 100%; margin-top: 15px; margin-bottom: 25px;">']
+    html.append('<table style="width:100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; font-size: 13px; text-align: center; border: 1px solid #cbd5e1;">')
+
+    # En-têtes strictement en HAUT
+    html.append('<thead><tr style="background-color: #003366; color: white;">')
+    html.append('<th style="padding: 10px 12px; border: 1px solid #1c4b78; text-align: left; min-width: 180px; font-weight: 600;">Actifs</th>')
+    for c in cols:
+        tb = ticker_map.get(c, '')
+        header_text = tb if tb else ((c[:18] + '...') if len(c) > 18 else c)
+        html.append(f'<th style="padding: 10px 8px; border: 1px solid #1c4b78; font-weight: 600; min-width: 100px;" title="{c}">{header_text}</th>')
+    html.append('</tr></thead><tbody>')
+
+    for r in cols:
+        html.append('<tr>')
+        short_r = (r[:26] + '...') if len(r) > 26 else r
+        tb_r = ticker_map.get(r, '')
+        label_r = f"{short_r} ({tb_r})" if tb_r and tb_r not in short_r else short_r
+        html.append(f'<td style="padding: 9px 12px; border: 1px solid #e2e8f0; font-weight: 600; text-align: left; background-color: #f8fafc; color: #003366;" title="{r}">{label_r}</td>')
+
+        for c in cols:
+            val = corr_df.loc[r, c]
+            if r == c or pd.isna(val) or val >= 0.9999:
+                bg = "#f1f5f9"
+                txt_color = "#475569"
+                weight = "600"
+                val_str = "1.00"
+            else:
+                weight = "600"
+                val_str = f"{val:+.2f}"
+                if val >= 0:
+                    alpha = min(0.35, float(val) * 0.35)
+                    bg = f"rgba(0, 51, 102, {alpha:.2f})"
+                    txt_color = "#003366"
+                else:
+                    alpha = min(0.35, abs(float(val)) * 0.35)
+                    bg = f"rgba(220, 53, 69, {alpha:.2f})"
+                    txt_color = "#991b1b"
+            tooltip = f"Corrélation ({r} / {c}) : {val_str}"
+            html.append(f'<td style="padding: 9px 8px; border: 1px solid #e2e8f0; background-color: {bg}; color: {txt_color}; font-weight: {weight}; font-variant-numeric: tabular-nums;" title="{tooltip}">{val_str}</td>')
+        html.append('</tr>')
+
+    html.append('</tbody></table>')
+    html.append('<div style="font-size: 11px; color: #64748b; margin-top: 8px; text-align: right;">Matrice des corrélations de Pearson (-1.00 à +1.00) calculées sur la base des rendements quotidiens communs.</div>')
+    html.append('</div>')
+    return ''.join(html)

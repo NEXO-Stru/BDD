@@ -23,11 +23,12 @@ from financial_core import (
     create_pptx_report,
     create_nexo_presentation_pptx,
     extract_decrement,
-    color_score
+    color_score,
+    render_classic_corr_table
 )
 
 # 1. Configuration de la page
-st.set_page_config(page_title="NEXO Database", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Base de Données", layout="wide", initial_sidebar_state="expanded")
 
 # --- CSS & DESIGN SYSTEM INSTITUTIONNEL (Axe 3) ---
 st.markdown("""
@@ -194,13 +195,12 @@ asset_options = dict(zip(assets_df['display_name'], assets_df['asset_id']))
 last_date = prices_pivot.index.max()
 
 # ==============================================================================
-# 3. NAVIGATION LATÉRALE (Option B - Identique à stress-tests)
+# 3. NAVIGATION LATÉRALE
 # ==============================================================================
 if "nav_radio" not in st.session_state:
     st.session_state["nav_radio"] = "Univers d'Investissement"
 
-st.sidebar.markdown("<h2 style='color: #003366; margin-bottom: 0px;'>NEXO Database</h2>", unsafe_allow_html=True)
-st.sidebar.caption("Plateforme d'Intelligence Quantitative & Scoring")
+st.sidebar.title("Base de Données")
 st.sidebar.divider()
 
 nav_options = ["Univers d'Investissement", "Fiche Détaillée Actif", "Comparaison Multi-Actifs"]
@@ -350,16 +350,16 @@ elif selected_nav == "Fiche Détaillée Actif":
     selected_asset_id = asset_options[selected_asset_name]
     asset_info = assets_df[assets_df['asset_id'] == selected_asset_id].iloc[0]
 
-    # Préparation des séries de prix pour l'actif
-    if selected_asset_id not in prices_pivot.columns:
-        st.warning("Aucun historique de prix disponible pour cet actif (base de données vide pour ce ticker).")
-        st.stop()
-
-    asset_prices = prices_pivot[selected_asset_id].dropna()
-    asset_prices = asset_prices[asset_prices > 0]
-    if len(asset_prices) == 0:
-        st.warning("Aucun historique de prix valide (non nul) disponible pour cet actif.")
-        st.stop()
+    # Préparation des séries de prix pour l'actif (avec support des actifs sans historique de cours)
+    has_prices = (
+        selected_asset_id in prices_pivot.columns and 
+        len(prices_pivot[selected_asset_id].dropna()[prices_pivot[selected_asset_id] > 0]) > 0
+    )
+    if has_prices:
+        asset_prices = prices_pivot[selected_asset_id].dropna()
+        asset_prices = asset_prices[asset_prices > 0]
+    else:
+        asset_prices = pd.Series(dtype=float)
 
     # Résolution automatique du benchmark régional
     bench_id_auto, bench_ticker_auto, bench_prices_auto = repo.get_benchmark_for_asset(
@@ -407,6 +407,9 @@ elif selected_nav == "Fiche Détaillée Actif":
     # SOUS-SECTION 1 : APERÇU & SCORING NEXO™
     # --------------------------------------------------------------------------
     with sub_tab1:
+        if not has_prices:
+            st.info("Aucun historique de cours quotidien n'est disponible pour cet actif dans la base de données. L'aperçu et le scoring NEXO™ sont calculés à partir du référentiel.")
+
         st.markdown("<div class='section-title'>Fiche d'Identité & Caractéristiques</div>", unsafe_allow_html=True)
 
         col1, col2, col3, col4 = st.columns(4)
@@ -447,27 +450,29 @@ elif selected_nav == "Fiche Détaillée Actif":
 
             st.divider()
 
-        st.markdown(f"<h3 style='color: #003366; margin-top: 20px; margin-bottom: 25px;'>Présentation Institutionnelle : {asset_name_str}</h3>", unsafe_allow_html=True)
-
-        col_bench, _ = st.columns([1, 2])
-        with col_bench:
-            benchmark_name = st.selectbox(
-                "Sélectionnez un benchmark pour le graphique :",
-                options=["Aucun"] + sorted(asset_options.keys()),
-                index=0,
-                key="pres_benchmark"
-            )
+        st.markdown(f"<h3 style='color: #003366; margin-top: 20px; margin-bottom: 25px;'>PRÉSENTATION DE L'ACTIF : {asset_name_str}</h3>", unsafe_allow_html=True)
 
         benchmark_prices = None
-        bench_ticker_disp = str(benchmark_name)[:15] if benchmark_name != "Aucun" else ""
-        if benchmark_name != "Aucun":
-            bench_id = asset_options[benchmark_name]
-            if bench_id in prices_pivot.columns:
-                benchmark_prices = prices_pivot[bench_id].dropna()
-                bench_info = assets_df[assets_df['asset_id'] == bench_id].iloc[0]
-                bt = str(bench_info.get('ticker_bloomberg', benchmark_name))
-                if pd.notna(bt) and bt.strip() != 'nan':
-                    bench_ticker_disp = bt
+        bench_ticker_disp = ""
+        if has_prices:
+            col_bench, _ = st.columns([1, 2])
+            with col_bench:
+                benchmark_name = st.selectbox(
+                    "Sélectionnez un benchmark pour le graphique :",
+                    options=["Aucun"] + sorted(asset_options.keys()),
+                    index=0,
+                    key="pres_benchmark"
+                )
+
+            bench_ticker_disp = str(benchmark_name)[:15] if benchmark_name != "Aucun" else ""
+            if benchmark_name != "Aucun":
+                bench_id = asset_options[benchmark_name]
+                if bench_id in prices_pivot.columns:
+                    benchmark_prices = prices_pivot[bench_id].dropna()
+                    bench_info = assets_df[assets_df['asset_id'] == bench_id].iloc[0]
+                    bt = str(bench_info.get('ticker_bloomberg', benchmark_name))
+                    if pd.notna(bt) and bt.strip() != 'nan':
+                        bench_ticker_disp = bt
 
         pres_col1, pres_col2 = st.columns([1, 1], gap="large")
 
@@ -479,8 +484,13 @@ elif selected_nav == "Fiche Détaillée Actif":
             st.markdown(f"<p style='font-size: 13px; text-align: justify; margin-bottom: 25px;'>{desc}</p>", unsafe_allow_html=True)
             
             div_val_pct = f"{float(div_2025)*100:.2f}%".replace('.', ',') if pd.notna(div_2025) and div_2025 is not None else "N/A"
-            date_str = current_date.strftime('%d/%m/%Y')
-            curr_price_str = f"{current_price:.2f}".replace('.', ',') + " pts"
+            date_str = current_date.strftime('%d/%m/%Y') if (current_date is not None and pd.notna(current_date)) else "N/A"
+            if has_prices and pd.notna(current_price):
+                curr_price_str = f"{current_price:.2f}".replace('.', ',') + " pts"
+            elif pd.notna(asset_info.get('last_price')) and float(asset_info['last_price']) > 0:
+                curr_price_str = f"{float(asset_info['last_price']):.2f}".replace('.', ',') + " pts"
+            else:
+                curr_price_str = "N/A"
             
             if dec_val is not None:
                 dec_val_pct = f"{dec_yield_pct:.2f}%".replace('.', ',') if dec_yield_pct != "N/A" else "N/A"
@@ -507,6 +517,10 @@ elif selected_nav == "Fiche Détaillée Actif":
             """, unsafe_allow_html=True)
             
             # Tableau officiel des Scores NEXO (conservé tel quel, pas de badges)
+            vol_disp = f"{note_vol:.2f}/5" if (note_vol != "N/A" and pd.notna(note_vol)) else "N/A"
+            yield_disp = f"{note_yield:.2f}/5" if (note_yield != "N/A" and pd.notna(note_yield)) else "N/A"
+            ecart_disp = f"{note_ecart:.2f}/5" if (note_ecart != "N/A" and pd.notna(note_ecart)) else "N/A"
+
             st.markdown("""
 <table style="width:100%; font-family:sans-serif; font-size:13px; text-align:center; border-collapse: collapse; border: none;">
     <tr><th colspan="3" style="background-color:#003366; color:white; padding:8px; border: 1px solid white;">Score NEXO™</th></tr>
@@ -522,9 +536,9 @@ elif selected_nav == "Fiche Détaillée Actif":
     </tr>
 </table>
             """.format(
-                color_vol=color_vol, vol_text=f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A",
-                color_yield=color_yield, yield_text=f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A",
-                color_ecart=color_ecart, ecart_text=f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A"
+                color_vol=color_vol, vol_text=vol_disp,
+                color_yield=color_yield, yield_text=yield_disp,
+                color_ecart=color_ecart, ecart_text=ecart_disp
             ), unsafe_allow_html=True)
             
             st.markdown("""
@@ -538,109 +552,111 @@ elif selected_nav == "Fiche Détaillée Actif":
             </div>
             """, unsafe_allow_html=True)
 
+        ticker_disp = str(asset_info.get('ticker_bloomberg', 'Actif'))
+        if pd.isna(ticker_disp) or ticker_disp.strip() == 'nan':
+            ticker_disp = 'Actif'
+
+        def fmt(v, pct=False):
+            if pd.isna(v) or v == "N/A": return "N/A"
+            if pct: return f"{v:.2f}%"
+            return f"{v:.2f}"
+
         with pres_col2:
-            is_base_100 = (benchmark_prices is not None)
-            title_text = "Évolution historique de la performance (Base 100)" if is_base_100 else "Évolution historique du cours"
-            
-            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; color:#003366;'>{title_text}</div>", unsafe_allow_html=True)
-            fig_pres = go.Figure()
-            
-            ticker_disp = str(asset_info.get('ticker_bloomberg', 'Actif'))
-            if pd.isna(ticker_disp) or ticker_disp.strip() == 'nan': ticker_disp = 'Actif'
-            
-            main_color = '#003366'
-            
-            if is_base_100:
-                common_idx = asset_prices.index.intersection(benchmark_prices.index)
-                if len(common_idx) > 0:
-                    asset_sub = asset_prices.loc[common_idx]
-                    bench_sub = benchmark_prices.loc[common_idx]
-                    asset_b100 = (asset_sub / asset_sub.iloc[0]) * 100
-                    bench_b100 = (bench_sub / bench_sub.iloc[0]) * 100
-                    
-                    fig_pres.add_trace(go.Scatter(x=asset_b100.index, y=asset_b100, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
-                    fig_pres.add_trace(go.Scatter(x=bench_b100.index, y=bench_b100, mode='lines', name=bench_ticker_disp, line=dict(color='#00d2ff', width=2.0)))
+            if has_prices:
+                is_base_100 = (benchmark_prices is not None)
+                title_text = "Évolution historique de la performance (Base 100)" if is_base_100 else "Évolution historique du cours"
+                
+                st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; color:#003366;'>{title_text}</div>", unsafe_allow_html=True)
+                fig_pres = go.Figure()
+                
+                main_color = '#003366'
+                
+                if is_base_100:
+                    common_idx = asset_prices.index.intersection(benchmark_prices.index)
+                    if len(common_idx) > 0:
+                        asset_sub = asset_prices.loc[common_idx]
+                        bench_sub = benchmark_prices.loc[common_idx]
+                        asset_b100 = (asset_sub / asset_sub.iloc[0]) * 100
+                        bench_b100 = (bench_sub / bench_sub.iloc[0]) * 100
+                        
+                        fig_pres.add_trace(go.Scatter(x=asset_b100.index, y=asset_b100, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
+                        fig_pres.add_trace(go.Scatter(x=bench_b100.index, y=bench_b100, mode='lines', name=bench_ticker_disp, line=dict(color='#00d2ff', width=2.0)))
+                    else:
+                        asset_b100 = (asset_prices / asset_prices.iloc[0]) * 100
+                        fig_pres.add_trace(go.Scatter(x=asset_b100.index, y=asset_b100, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
                 else:
-                    asset_b100 = (asset_prices / asset_prices.iloc[0]) * 100
-                    fig_pres.add_trace(go.Scatter(x=asset_b100.index, y=asset_b100, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
-            else:
-                fig_pres.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
+                    fig_pres.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
+                    
+                fig_pres.update_layout(
+                    title=dict(text=title_text, font=dict(size=13, color='#003366', family='Arial', weight='bold'), x=0.5),
+                    margin=dict(l=40, r=10, t=40, b=80), 
+                    height=280, 
+                    plot_bgcolor='white', 
+                    paper_bgcolor='white',
+                    xaxis=dict(showgrid=False, dtick="M12", tickformat="%b-%y", tickangle=-45, tickfont=dict(color='#595959')), 
+                    yaxis=dict(showgrid=True, gridcolor='#e6e9ed', zeroline=False, dtick=50 if is_base_100 else None, tickformat=".2f", tickfont=dict(color='#595959')),
+                    legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5, font=dict(size=10))
+                )
+                st.plotly_chart(fig_pres, use_container_width=True, config={'displayModeBar': False})
                 
-            fig_pres.update_layout(
-                title=dict(text=title_text, font=dict(size=13, color='#003366', family='Arial', weight='bold'), x=0.5),
-                margin=dict(l=40, r=10, t=40, b=80), 
-                height=280, 
-                plot_bgcolor='white', 
-                paper_bgcolor='white',
-                xaxis=dict(showgrid=False, dtick="M12", tickformat="%b-%y", tickangle=-45, tickfont=dict(color='#595959')), 
-                yaxis=dict(showgrid=True, gridcolor='#e6e9ed', zeroline=False, dtick=50 if is_base_100 else None, tickformat=".2f", tickfont=dict(color='#595959')),
-                legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5, font=dict(size=10))
-            )
-            st.plotly_chart(fig_pres, use_container_width=True, config={'displayModeBar': False})
-            
-            perfs = [asset_model.perf_ann(365*10), asset_model.perf_ann(365*5), asset_model.perf(365)]
-            vols = [asset_model.vol(365*10), asset_model.vol(365*5), asset_model.vol(365)]
-            sharpes = [asset_model.sharpe_ratio(365*10), asset_model.sharpe_ratio(365*5), asset_model.sharpe_ratio(365)]
-            drawdowns = [asset_model.max_drawdown(365*10), asset_model.max_drawdown(365*5), asset_model.max_drawdown(365)]
-            
-            def fmt(v, pct=False):
-                if pd.isna(v): return "N/A"
-                if pct: return f"{v:.2f}%"
-                return f"{v:.2f}"
-            
-            def get_bench_perf_ann(days):
-                if benchmark_prices is None or benchmark_prices.empty: return np.nan
-                cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
-                p = benchmark_prices[benchmark_prices.index >= cutoff]
-                if len(p) < 2: return np.nan
-                tot = (p.iloc[-1] / p.iloc[0]) - 1
-                years = days/365
-                if years <= 1: return tot * 100
-                return ((1 + tot)**(1/years) - 1) * 100
+                perfs = [asset_model.perf_ann(365*10), asset_model.perf_ann(365*5), asset_model.perf(365)]
+                vols = [asset_model.vol(365*10), asset_model.vol(365*5), asset_model.vol(365)]
+                sharpes = [asset_model.sharpe_ratio(365*10), asset_model.sharpe_ratio(365*5), asset_model.sharpe_ratio(365)]
+                drawdowns = [asset_model.max_drawdown(365*10), asset_model.max_drawdown(365*5), asset_model.max_drawdown(365)]
+                
+                def get_bench_perf_ann(days):
+                    if benchmark_prices is None or benchmark_prices.empty: return np.nan
+                    cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
+                    p = benchmark_prices[benchmark_prices.index >= cutoff]
+                    if len(p) < 2: return np.nan
+                    tot = (p.iloc[-1] / p.iloc[0]) - 1
+                    years = days/365
+                    if years <= 1: return tot * 100
+                    return ((1 + tot)**(1/years) - 1) * 100
 
-            def get_bench_vol(days):
-                if benchmark_prices is None or benchmark_prices.empty: return np.nan
-                cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
-                p = benchmark_prices[benchmark_prices.index >= cutoff]
-                if len(p) < 2: return np.nan
-                rets = p.pct_change().dropna()
-                return rets.std() * np.sqrt(252) * 100
-                
-            def get_bench_max_drawdown(days):
-                if benchmark_prices is None or benchmark_prices.empty: return np.nan
-                cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
-                p = benchmark_prices[benchmark_prices.index >= cutoff]
-                if len(p) < 2: return np.nan
-                roll_max = p.cummax()
-                dd = (p - roll_max) / roll_max
-                return dd.min() * 100
-                
-            def get_bench_sharpe(days):
-                if benchmark_prices is None or benchmark_prices.empty: return np.nan
-                ret = get_bench_perf_ann(days)
-                v = get_bench_vol(days)
-                if pd.isna(ret) or pd.isna(v) or v == 0: return np.nan
-                return ret / v
-                
-            def get_correlation(days):
-                if benchmark_prices is None or benchmark_prices.empty: return np.nan
-                common = asset_prices.index.intersection(benchmark_prices.index)
-                cutoff = common.max() - pd.Timedelta(days=days)
-                common = common[common >= cutoff]
-                if len(common) < 2: return np.nan
-                ret_a = asset_prices.loc[common].pct_change().dropna()
-                ret_b = benchmark_prices.loc[common].pct_change().dropna()
-                if len(ret_a) < 2: return np.nan
-                return ret_a.corr(ret_b) * 100
+                def get_bench_vol(days):
+                    if benchmark_prices is None or benchmark_prices.empty: return np.nan
+                    cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
+                    p = benchmark_prices[benchmark_prices.index >= cutoff]
+                    if len(p) < 2: return np.nan
+                    rets = p.pct_change().dropna()
+                    return rets.std() * np.sqrt(252) * 100
+                    
+                def get_bench_max_drawdown(days):
+                    if benchmark_prices is None or benchmark_prices.empty: return np.nan
+                    cutoff = benchmark_prices.index.max() - pd.Timedelta(days=days)
+                    p = benchmark_prices[benchmark_prices.index >= cutoff]
+                    if len(p) < 2: return np.nan
+                    roll_max = p.cummax()
+                    dd = (p - roll_max) / roll_max
+                    return dd.min() * 100
+                    
+                def get_bench_sharpe(days):
+                    if benchmark_prices is None or benchmark_prices.empty: return np.nan
+                    ret = get_bench_perf_ann(days)
+                    v = get_bench_vol(days)
+                    if pd.isna(ret) or pd.isna(v) or v == 0: return np.nan
+                    return ret / v
+                    
+                def get_correlation(days):
+                    if benchmark_prices is None or benchmark_prices.empty: return np.nan
+                    common = asset_prices.index.intersection(benchmark_prices.index)
+                    cutoff = common.max() - pd.Timedelta(days=days)
+                    common = common[common >= cutoff]
+                    if len(common) < 2: return np.nan
+                    ret_a = asset_prices.loc[common].pct_change().dropna()
+                    ret_b = benchmark_prices.loc[common].pct_change().dropna()
+                    if len(ret_a) < 2: return np.nan
+                    return ret_a.corr(ret_b) * 100
 
-            if benchmark_prices is not None:
-                bench_perfs = [get_bench_perf_ann(365*10), get_bench_perf_ann(365*5), get_bench_perf_ann(365)]
-                bench_vols = [get_bench_vol(365*10), get_bench_vol(365*5), get_bench_vol(365)]
-                bench_sharpes = [get_bench_sharpe(365*10), get_bench_sharpe(365*5), get_bench_sharpe(365)]
-                bench_drawdowns = [get_bench_max_drawdown(365*10), get_bench_max_drawdown(365*5), get_bench_max_drawdown(365)]
-                corrs = [get_correlation(365*10), get_correlation(365*5), get_correlation(365)]
+                if benchmark_prices is not None:
+                    bench_perfs = [get_bench_perf_ann(365*10), get_bench_perf_ann(365*5), get_bench_perf_ann(365)]
+                    bench_vols = [get_bench_vol(365*10), get_bench_vol(365*5), get_bench_vol(365)]
+                    bench_sharpes = [get_bench_sharpe(365*10), get_bench_sharpe(365*5), get_bench_sharpe(365)]
+                    bench_drawdowns = [get_bench_max_drawdown(365*10), get_bench_max_drawdown(365*5), get_bench_max_drawdown(365)]
+                    corrs = [get_correlation(365*10), get_correlation(365*5), get_correlation(365)]
 
-                table_html = f"""
+                    table_html = f"""
 <table style="width:100%; font-family:sans-serif; font-size:12px; text-align:center; margin-top: 15px; border-collapse: collapse; border: none;">
     <tr>
         <td style="border:none; width: 16%; background-color: white;"></td>
@@ -701,8 +717,8 @@ elif selected_nav == "Fiche Détaillée Actif":
     </tr>
 </table>
 """
-            else:
-                table_html = f"""
+                else:
+                    table_html = f"""
 <table style="width:100%; font-family:sans-serif; font-size:12px; text-align:center; margin-top: 15px; border-collapse: collapse; border: none;">
     <tr>
         <td style="border:none; width: 25%; background-color: white;"></td>
@@ -742,7 +758,14 @@ elif selected_nav == "Fiche Détaillée Actif":
     </tr>
 </table>
 """
-            st.markdown(table_html, unsafe_allow_html=True)
+                st.markdown(table_html, unsafe_allow_html=True)
+            else:
+                st.info("Historique de cours non disponible pour cet actif dans la base de données. Le graphique et les performances pluriannuelles nécessitent des cours.")
+                fig_pres = None
+                perfs = [np.nan, np.nan, np.nan]
+                vols = [np.nan, np.nan, np.nan]
+                sharpes = [np.nan, np.nan, np.nan]
+                drawdowns = [np.nan, np.nan, np.nan]
 
         st.markdown("<br>", unsafe_allow_html=True)
         with st.spinner("Génération du slide PPTX Client..."):
@@ -755,11 +778,11 @@ elif selected_nav == "Fiche Détaillée Actif":
                 left_data_list.append(["Taux de dividende 2025", f"{div_val_pct}"])
                 
             nexo_data_list = [
-                (f"{note_vol:.2f}/5" if note_vol!="N/A" else "N/A", color_vol),
-                (f"{note_yield:.2f}/5" if note_yield!="N/A" else "N/A", color_yield),
-                (f"{note_ecart:.2f}/5" if note_ecart!="N/A" else "N/A", color_ecart)
+                (vol_disp, color_vol),
+                (yield_disp, color_yield),
+                (ecart_disp, color_ecart)
             ]
-            if benchmark_prices is not None:
+            if has_prices and benchmark_prices is not None:
                 df_right = pd.DataFrame({
                     "C1": ["", "Performance annualisée", "Volatilité annualisée", "Sharpe Ratio", "Max Drawdown", "Corrélation"],
                     "C2": [ticker_disp, fmt(perfs[0], True), fmt(vols[0], True), fmt(sharpes[0]), fmt(drawdowns[0], True), fmt(corrs[0], True)],
@@ -795,20 +818,20 @@ elif selected_nav == "Fiche Détaillée Actif":
             if st.button(f"Préparer l'exportation pour {selected_asset_name}", key="btn_export_detail"):
                 with st.spinner("Génération des fichiers..."):
                     perf_data_exp = {
-                        "5 Jours": asset_model.perf(days=5),
-                        "1 Mois": asset_model.perf(days=30),
-                        "3 Mois": asset_model.perf(days=90),
-                        "YTD": asset_model.perf(ytd=True),
+                        "5 Jours": asset_model.perf(days=5) if has_prices else np.nan,
+                        "1 Mois": asset_model.perf(days=30) if has_prices else np.nan,
+                        "3 Mois": asset_model.perf(days=90) if has_prices else np.nan,
+                        "YTD": asset_model.perf(ytd=True) if has_prices else np.nan,
                     }
                     vol_data_exp = {
-                        "1 Mois": asset_model.vol(days=30),
-                        "3 Mois": asset_model.vol(days=90),
-                        "YTD": asset_model.vol(ytd=True),
-                        "1 An": asset_model.vol(days=365),
+                        "1 Mois": asset_model.vol(days=30) if has_prices else np.nan,
+                        "3 Mois": asset_model.vol(days=90) if has_prices else np.nan,
+                        "YTD": asset_model.vol(ytd=True) if has_prices else np.nan,
+                        "1 An": asset_model.vol(days=365) if has_prices else np.nan,
                     }
                     beta_data_exp = {
-                        "1 An": asset_model.beta(days=365),
-                        "3 Ans": asset_model.beta(days=365*3),
+                        "1 An": asset_model.beta(days=365) if has_prices else np.nan,
+                        "3 Ans": asset_model.beta(days=365*3) if has_prices else np.nan,
                     }
                     dfs_export = {
                         "Performances": pd.DataFrame([perf_data_exp]).T.reset_index().rename(columns={"index": "Période", 0: "Performance"}),
@@ -816,9 +839,9 @@ elif selected_nav == "Fiche Détaillée Actif":
                         "Bêta": pd.DataFrame([beta_data_exp]).T.reset_index().rename(columns={"index": "Période", 0: "Coefficient"})
                     }
                     
-                    figs_export = {
-                        "Cours": fig_pres
-                    }
+                    figs_export = {}
+                    if has_prices and fig_pres is not None:
+                        figs_export["Cours"] = fig_pres
                     
                     st.session_state["detail_exports"] = {
                         "excel": create_excel_report(dfs_export, figs_export),
@@ -832,186 +855,193 @@ elif selected_nav == "Fiche Détaillée Actif":
     # SOUS-SECTION 2 : ANALYSE TECHNIQUE & MARCHÉ
     # --------------------------------------------------------------------------
     with sub_tab2:
-        st.markdown(f"<div class='section-title'>Performances et Risques (Dernier cours : {current_price:.2f})</div>", unsafe_allow_html=True)
-
-        perf_data = {
-            "5 Jours": asset_model.perf(days=5),
-            "1 Mois": asset_model.perf(days=30),
-            "3 Mois": asset_model.perf(days=90),
-            "YTD": asset_model.perf(ytd=True),
-        }
-
-        vol_data = {
-            "1 Mois": asset_model.vol(days=30),
-            "3 Mois": asset_model.vol(days=90),
-            "YTD": asset_model.vol(ytd=True),
-            "1 An": asset_model.vol(days=365),
-        }
-        
-        beta_data = {
-            "1 An": asset_model.beta(days=365),
-            "3 Ans": asset_model.beta(days=365*3),
-        }
-
-        col_perf, col_vol, col_beta = st.columns(3)
-
-        with col_perf:
-            st.markdown("**Performances**")
-            perf_df = pd.DataFrame([perf_data]).T.reset_index()
-            perf_df.columns = ["Période", "Performance"]
-            st.dataframe(perf_df.style.format({"Performance": "{:.2f} %"}), use_container_width=True, hide_index=True)
-
-        with col_vol:
-            st.markdown("**Volatilité Annualisée**")
-            vol_df = pd.DataFrame([vol_data]).T.reset_index()
-            vol_df.columns = ["Période", "Volatilité"]
-            st.dataframe(vol_df.style.format({"Volatilité": "{:.2f} %"}), use_container_width=True, hide_index=True)
-            
-        with col_beta:
-            bench_disp = benchmark_ticker if benchmark_ticker else "N/A"
-            st.markdown(f"**Bêta (vs {bench_disp})**")
-            beta_df = pd.DataFrame([beta_data]).T.reset_index()
-            beta_df.columns = ["Période", "Coefficient"]
-            st.dataframe(beta_df.style.format({"Coefficient": "{:.2f}"}, na_rep="N/A"), use_container_width=True, hide_index=True)
-
-        st.divider()
-
-        # Graphique Technique du Cours avec SMAs
-        st.markdown("<div class='section-title'>Cours & Moyennes Mobiles</div>", unsafe_allow_html=True)
-
-        show_benchmark = False
-        if benchmark_asset_id and benchmark_asset_id in prices_pivot.columns:
-            show_benchmark = st.checkbox(f"Afficher la comparaison avec le Benchmark {benchmark_ticker} (Rebasé sur le prix de l'actif)", value=True)
-
-        fig = go.Figure()
-
-        if show_benchmark:
-            bench_prices = prices_pivot[benchmark_asset_id].dropna()
-            bench_prices = bench_prices[bench_prices > 0]
-            
-            asset_norm = asset_prices
-            common_dates = asset_prices.index.intersection(bench_prices.index)
-            if len(common_dates) > 0:
-                first_common = common_dates[0]
-                bench_sub = bench_prices[bench_prices.index >= first_common]
-                bench_norm = (bench_sub / bench_prices.loc[first_common]) * asset_prices.loc[first_common]
-                
-                fig.add_trace(go.Scatter(
-                    x=bench_norm.index, y=bench_norm, mode='lines', 
-                    name=f'Benchmark ({benchmark_ticker})', 
-                    line=dict(color='gray', width=1.5, dash='dot')
-                ))
-            
-            sma50 = asset_model.sma(50)
-            sma200 = asset_model.sma(200)
-            
-            fig.add_trace(go.Scatter(x=asset_norm.index, y=asset_norm, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
-            fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
-            fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
+        if not has_prices:
+            st.info("L'analyse technique, le suivi des moyennes mobiles (SMA 50 / SMA 200) et la volatilité glissante nécessitent un historique de cours quotidien pour cet actif.")
         else:
-            sma50 = asset_model.sma(50)
-            sma200 = asset_model.sma(200)
+            cours_disp = f" (Dernier cours : {current_price:.2f})" if pd.notna(current_price) else ""
+            st.markdown(f"<div class='section-title'>Performances et Risques{cours_disp}</div>", unsafe_allow_html=True)
+
+            perf_data = {
+                "5 Jours": asset_model.perf(days=5),
+                "1 Mois": asset_model.perf(days=30),
+                "3 Mois": asset_model.perf(days=90),
+                "YTD": asset_model.perf(ytd=True),
+            }
+
+            vol_data = {
+                "1 Mois": asset_model.vol(days=30),
+                "3 Mois": asset_model.vol(days=90),
+                "YTD": asset_model.vol(ytd=True),
+                "1 An": asset_model.vol(days=365),
+            }
             
-            fig.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
-            fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
-            fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
+            beta_data = {
+                "1 An": asset_model.beta(days=365),
+                "3 Ans": asset_model.beta(days=365*3),
+            }
 
-        fig.update_layout(
-            hovermode="x unified",
-            height=480,
-            margin=dict(l=0, r=0, t=30, b=0),
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            xaxis=dict(gridcolor='#e6e9ed'),
-            yaxis=dict(gridcolor='#e6e9ed')
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            col_perf, col_vol, col_beta = st.columns(3)
 
-        st.divider()
+            with col_perf:
+                st.markdown("**Performances**")
+                perf_df = pd.DataFrame([perf_data]).T.reset_index()
+                perf_df.columns = ["Période", "Performance"]
+                st.dataframe(perf_df.style.format({"Performance": "{:.2f} %"}), use_container_width=True, hide_index=True)
 
-        # Volatilité Annuelle Glissante
-        st.markdown("<div class='section-title'>Volatilité Annualisée (1 An Glissant)</div>", unsafe_allow_html=True)
-        roll_vol = asset_model.rolling_vol(window_days=252)
-        
-        fig_vol = go.Figure()
-        fig_vol.add_trace(go.Scatter(
-            x=roll_vol.index, y=roll_vol, mode='lines', name='Volatilité', 
-            line=dict(color='#ff9900', width=2)
-        ))
-        fig_vol.update_layout(
-            hovermode="x unified",
-            height=380,
-            margin=dict(l=0, r=0, t=30, b=0), 
-            yaxis_title="Volatilité (%)",
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            xaxis=dict(gridcolor='#e6e9ed'),
-            yaxis=dict(gridcolor='#e6e9ed')
-        )
-        st.plotly_chart(fig_vol, use_container_width=True)
+            with col_vol:
+                st.markdown("**Volatilité Annualisée**")
+                vol_df = pd.DataFrame([vol_data]).T.reset_index()
+                vol_df.columns = ["Période", "Volatilité"]
+                st.dataframe(vol_df.style.format({"Volatilité": "{:.2f} %"}), use_container_width=True, hide_index=True)
+                
+            with col_beta:
+                bench_disp = benchmark_ticker if benchmark_ticker else "N/A"
+                st.markdown(f"**Bêta (vs {bench_disp})**")
+                beta_df = pd.DataFrame([beta_data]).T.reset_index()
+                beta_df.columns = ["Période", "Coefficient"]
+                st.dataframe(beta_df.style.format({"Coefficient": "{:.2f}"}, na_rep="N/A"), use_container_width=True, hide_index=True)
+
+            st.divider()
+
+            # Graphique Technique du Cours avec SMAs
+            st.markdown("<div class='section-title'>Cours & Moyennes Mobiles</div>", unsafe_allow_html=True)
+
+            show_benchmark = False
+            if benchmark_asset_id and benchmark_asset_id in prices_pivot.columns:
+                show_benchmark = st.checkbox(f"Afficher la comparaison avec le Benchmark {benchmark_ticker} (Rebasé sur le prix de l'actif)", value=True)
+
+            fig = go.Figure()
+
+            if show_benchmark:
+                bench_prices = prices_pivot[benchmark_asset_id].dropna()
+                bench_prices = bench_prices[bench_prices > 0]
+                
+                asset_norm = asset_prices
+                common_dates = asset_prices.index.intersection(bench_prices.index)
+                if len(common_dates) > 0:
+                    first_common = common_dates[0]
+                    bench_sub = bench_prices[bench_prices.index >= first_common]
+                    bench_norm = (bench_sub / bench_prices.loc[first_common]) * asset_prices.loc[first_common]
+                    
+                    fig.add_trace(go.Scatter(
+                        x=bench_norm.index, y=bench_norm, mode='lines', 
+                        name=f'Benchmark ({benchmark_ticker})', 
+                        line=dict(color='gray', width=1.5, dash='dot')
+                    ))
+                
+                sma50 = asset_model.sma(50)
+                sma200 = asset_model.sma(200)
+                
+                fig.add_trace(go.Scatter(x=asset_norm.index, y=asset_norm, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
+                fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
+                fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
+            else:
+                sma50 = asset_model.sma(50)
+                sma200 = asset_model.sma(200)
+                
+                fig.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
+                fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
+                fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
+
+            fig.update_layout(
+                hovermode="x unified",
+                height=480,
+                margin=dict(l=0, r=0, t=30, b=0),
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                xaxis=dict(gridcolor='#e6e9ed'),
+                yaxis=dict(gridcolor='#e6e9ed')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.divider()
+
+            # Volatilité Annuelle Glissante
+            st.markdown("<div class='section-title'>Volatilité Annualisée (1 An Glissant)</div>", unsafe_allow_html=True)
+            roll_vol = asset_model.rolling_vol(window_days=252)
+            
+            fig_vol = go.Figure()
+            fig_vol.add_trace(go.Scatter(
+                x=roll_vol.index, y=roll_vol, mode='lines', name='Volatilité', 
+                line=dict(color='#ff9900', width=2)
+            ))
+            fig_vol.update_layout(
+                hovermode="x unified",
+                height=380,
+                margin=dict(l=0, r=0, t=30, b=0), 
+                yaxis_title="Volatilité (%)",
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                xaxis=dict(gridcolor='#e6e9ed'),
+                yaxis=dict(gridcolor='#e6e9ed')
+            )
+            st.plotly_chart(fig_vol, use_container_width=True)
 
     # --------------------------------------------------------------------------
     # SOUS-SECTION 3 : RELATIONS & CORRÉLATIONS
     # --------------------------------------------------------------------------
     with sub_tab3:
-        st.markdown("<div class='section-title'>Analyse des Corrélations (1 An Glissant)</div>", unsafe_allow_html=True)
+        if not has_prices:
+            st.info("L'analyse des corrélations et de sensibilité au benchmark nécessite un historique de cours quotidien pour cet actif.")
+        else:
+            st.markdown("<div class='section-title'>Analyse des Corrélations (1 An Glissant)</div>", unsafe_allow_html=True)
 
-        subtypes = sorted([str(x) for x in assets_df['asset_subtype'].dropna().unique()])
-        sectors = sorted([str(x) for x in assets_df['sector'].dropna().unique()])
-        countries = sorted([str(x) for x in assets_df['country'].dropna().unique()])
+            subtypes = sorted([str(x) for x in assets_df['asset_subtype'].dropna().unique()])
+            sectors = sorted([str(x) for x in assets_df['sector'].dropna().unique()])
+            countries = sorted([str(x) for x in assets_df['country'].dropna().unique()])
 
-        col_f1_c, col_f2_c, col_f3_c = st.columns(3)
-        with col_f1_c:
-            filter_subtype = st.multiselect("Filtre Sous Type", options=subtypes, key="corr_subtype")
-        with col_f2_c:
-            filter_sector = st.multiselect("Filtre Secteur", options=sectors, key="corr_sector")
-        with col_f3_c:
-            filter_country = st.multiselect("Filtre Pays", options=countries, key="corr_country")
+            col_f1_c, col_f2_c, col_f3_c = st.columns(3)
+            with col_f1_c:
+                filter_subtype = st.multiselect("Filtre Sous Type", options=subtypes, key="corr_subtype")
+            with col_f2_c:
+                filter_sector = st.multiselect("Filtre Secteur", options=sectors, key="corr_sector")
+            with col_f3_c:
+                filter_country = st.multiselect("Filtre Pays", options=countries, key="corr_country")
 
-        with st.spinner("Calcul des corrélations en cours..."):
-            one_year_ago = current_date - pd.Timedelta(days=365)
-            prices_1y_c = prices_pivot[prices_pivot.index >= one_year_ago]
-            
-            mask = pd.Series(True, index=assets_df.index)
-            if len(filter_subtype) > 0:
-                mask = mask & (assets_df['asset_subtype'].isin(filter_subtype))
-            if len(filter_sector) > 0:
-                mask = mask & (assets_df['sector'].isin(filter_sector))
-            if len(filter_country) > 0:
-                mask = mask & (assets_df['country'].isin(filter_country))
-
-            valid_ids = assets_df[mask]['asset_id'].tolist()
-            
-            if selected_asset_id not in valid_ids:
-                valid_ids.append(selected_asset_id)
-            valid_ids = [vid for vid in valid_ids if vid in prices_1y_c.columns]
-            prices_1y_c = prices_1y_c[valid_ids]
-            
-            returns_1y_c = prices_1y_c.pct_change(fill_method=None).dropna(how='all')
-            if selected_asset_id in returns_1y_c.columns:
-                corr_series = returns_1y_c.corrwith(returns_1y_c[selected_asset_id]).dropna()
-                corr_series = corr_series.drop(index=selected_asset_id, errors='ignore')
+            with st.spinner("Calcul des corrélations en cours..."):
+                one_year_ago = current_date - pd.Timedelta(days=365)
+                prices_1y_c = prices_pivot[prices_pivot.index >= one_year_ago]
                 
-                if len(corr_series) > 0:
-                    id_to_name = dict(zip(assets_df['asset_id'], assets_df['display_name']))
-                    corr_df = corr_series.reset_index()
-                    corr_df.columns = ['asset_id', 'Correlation']
-                    corr_df['Nom de l\'actif'] = corr_df['asset_id'].map(id_to_name)
+                mask = pd.Series(True, index=assets_df.index)
+                if len(filter_subtype) > 0:
+                    mask = mask & (assets_df['asset_subtype'].isin(filter_subtype))
+                if len(filter_sector) > 0:
+                    mask = mask & (assets_df['sector'].isin(filter_sector))
+                if len(filter_country) > 0:
+                    mask = mask & (assets_df['country'].isin(filter_country))
+
+                valid_ids = assets_df[mask]['asset_id'].tolist()
+                
+                if selected_asset_id not in valid_ids:
+                    valid_ids.append(selected_asset_id)
+                valid_ids = [vid for vid in valid_ids if vid in prices_1y_c.columns]
+                prices_1y_c = prices_1y_c[valid_ids]
+                
+                returns_1y_c = prices_1y_c.pct_change(fill_method=None).dropna(how='all')
+                if selected_asset_id in returns_1y_c.columns:
+                    corr_series = returns_1y_c.corrwith(returns_1y_c[selected_asset_id]).dropna()
+                    corr_series = corr_series.drop(index=selected_asset_id, errors='ignore')
                     
-                    top_10 = corr_df.nlargest(10, 'Correlation')[['Nom de l\'actif', 'Correlation']]
-                    bottom_10 = corr_df.nsmallest(10, 'Correlation')[['Nom de l\'actif', 'Correlation']]
-                    
-                    col_top, col_bottom = st.columns(2)
-                    with col_top:
-                        st.markdown("**Les plus corrélés**")
-                        st.dataframe(top_10.style.format({'Correlation': "{:.4f}"}), use_container_width=True, hide_index=True)
-                    with col_bottom:
-                        st.markdown("**Les moins corrélés**")
-                        st.dataframe(bottom_10.style.format({'Correlation': "{:.4f}"}), use_container_width=True, hide_index=True)
+                    if len(corr_series) > 0:
+                        id_to_name = dict(zip(assets_df['asset_id'], assets_df['display_name']))
+                        corr_df = corr_series.reset_index()
+                        corr_df.columns = ['asset_id', 'Correlation']
+                        corr_df['Nom de l\'actif'] = corr_df['asset_id'].map(id_to_name)
+                        
+                        top_10 = corr_df.nlargest(10, 'Correlation')[['Nom de l\'actif', 'Correlation']]
+                        bottom_10 = corr_df.nsmallest(10, 'Correlation')[['Nom de l\'actif', 'Correlation']]
+                        
+                        col_top, col_bottom = st.columns(2)
+                        with col_top:
+                            st.markdown("**Les plus corrélés**")
+                            st.dataframe(top_10.style.format({'Correlation': "{:.4f}"}), use_container_width=True, hide_index=True)
+                        with col_bottom:
+                            st.markdown("**Les moins corrélés**")
+                            st.dataframe(bottom_10.style.format({'Correlation': "{:.4f}"}), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Pas assez de données pour calculer les corrélations sur cet univers.")
                 else:
-                    st.info("Pas assez de données pour calculer les corrélations sur cet univers.")
-            else:
-                st.warning("L'actif sélectionné n'a pas de données sur la dernière année.")
+                    st.warning("L'actif sélectionné n'a pas de données sur la dernière année.")
 
 
 # ==============================================================================
@@ -1324,40 +1354,18 @@ elif selected_nav == "Comparaison Multi-Actifs":
                 # --- ONGLET 3 : MATRICE DES CORRÉLATIONS ---
                 if comp_tab3 is not None:
                     with comp_tab3:
-                        # 1. Matrice thermique carrée des corrélations croisées directes
+                        # 1. Matrice classique et institutionnelle des corrélations croisées directes
                         st.markdown("<div class='section-title'>Matrice Carrée des Corrélations</div>", unsafe_allow_html=True)
                         st.markdown("Corrélations des rendements quotidiens calculées sur la période d'analyse commune.")
 
                         returns_df = compare_prices_common.pct_change(fill_method=None).dropna()
                         id_to_name = {v: k for k, v in asset_options.items()}
-                        id_to_short = {v: (k[:20] + "...") if len(k) > 20 else k for k, v in asset_options.items()}
                         corr_matrix_named = returns_df.rename(columns=id_to_name).corr()
-                        corr_matrix_short = returns_df.rename(columns=id_to_short).corr()
 
-                        fig_heatmap = go.Figure(data=go.Heatmap(
-                            z=corr_matrix_named.values,
-                            x=list(corr_matrix_short.columns),
-                            y=list(corr_matrix_short.index),
-                            colorscale=[
-                                [0.0, '#313695'],
-                                [0.25, '#74add1'],
-                                [0.5, '#f7f7f7'],
-                                [0.75, '#fdae61'],
-                                [1.0, '#d73027']
-                            ],
-                            zmin=-1, zmax=1,
-                            text=np.round(corr_matrix_named.values, 2),
-                            texttemplate="%{text}",
-                            colorbar=dict(title="Corrélation", tickfont=dict(size=10))
-                        ))
-                        fig_heatmap.update_layout(
-                            height=max(320, 60 * len(valid_ids) + 100),
-                            margin=dict(l=0, r=0, t=30, b=0),
-                            plot_bgcolor='white',
-                            paper_bgcolor='white',
-                            xaxis=dict(tickangle=-30)
-                        )
-                        st.plotly_chart(fig_heatmap, use_container_width=True)
+                        # Affichage de la table classique avec en-têtes strictement au-dessus
+                        corr_table_html = render_classic_corr_table(corr_matrix_named, assets_df=assets_df)
+                        st.markdown(corr_table_html, unsafe_allow_html=True)
+                        fig_heatmap = None
 
                         st.divider()
 
