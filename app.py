@@ -35,15 +35,15 @@ st.markdown("""
 <style>
     /* Titres principaux */
     .main-header {
-        color: #003366;
+        color: #143F6A;
         font-weight: 700;
         font-size: 26px;
         margin-bottom: 18px;
-        border-bottom: 2px solid #003366;
+        border-bottom: 2px solid #143F6A;
         padding-bottom: 8px;
     }
     .section-title {
-        color: #003366;
+        color: #143F6A;
         font-size: 17px;
         font-weight: 600;
         margin-top: 15px;
@@ -60,8 +60,8 @@ st.markdown("""
         transition: all 0.2s ease-in-out;
     }
     [data-testid="stMetric"]:hover {
-        border-color: #003366;
-        box-shadow: 0 3px 8px rgba(0, 51, 102, 0.08);
+        border-color: #143F6A;
+        box-shadow: 0 3px 8px rgba(20, 63, 106, 0.08);
     }
     [data-testid="stMetricLabel"] {
         font-size: 11px !important;
@@ -73,7 +73,7 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         font-size: 18px !important;
         font-weight: 700 !important;
-        color: #003366 !important;
+        color: #143F6A !important;
     }
 
     /* Boîte de filtres compacte */
@@ -93,7 +93,7 @@ st.markdown("""
         font-weight: 600;
         border-radius: 20px;
         background-color: #e6f0fa;
-        color: #003366;
+        color: #143F6A;
         border: 1px solid #c2daf2;
     }
 </style>
@@ -450,7 +450,7 @@ elif selected_nav == "Fiche Détaillée Actif":
 
             st.divider()
 
-        st.markdown(f"<h3 style='color: #003366; margin-top: 20px; margin-bottom: 25px;'>PRÉSENTATION DE L'ACTIF : {asset_name_str}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color: #143F6A; margin-top: 20px; margin-bottom: 25px;'>PRÉSENTATION DE L'ACTIF : {asset_name_str}</h3>", unsafe_allow_html=True)
 
         benchmark_prices = None
         bench_ticker_disp = ""
@@ -495,18 +495,18 @@ elif selected_nav == "Fiche Détaillée Actif":
             if dec_val is not None:
                 dec_val_pct = f"{dec_yield_pct:.2f}%".replace('.', ',') if dec_yield_pct != "N/A" else "N/A"
                 table_rows = (
-                    f"<tr><td style='background-color:#003366; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Niveau de l'indice au {date_str}</td>"
+                    f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Niveau de l'indice au {date_str}</td>"
                     f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{curr_price_str}</td></tr>\n"
-                    f"<tr><td style='background-color:#003366; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de décrément au {date_str}</td>"
+                    f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de décrément au {date_str}</td>"
                     f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{dec_val_pct}</td></tr>\n"
-                    f"<tr><td style='background-color:#003366; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025 avec effet de réinvestissement</td>"
+                    f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025 avec effet de réinvestissement</td>"
                     f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>"
                 )
             else:
                 table_rows = (
-                    f"<tr><td style='background-color:#003366; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Niveau de l'indice au {date_str}</td>"
+                    f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Niveau de l'indice au {date_str}</td>"
                     f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{curr_price_str}</td></tr>\n"
-                    f"<tr><td style='background-color:#003366; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025</td>"
+                    f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025</td>"
                     f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>"
                 )
                 
@@ -523,11 +523,11 @@ elif selected_nav == "Fiche Détaillée Actif":
 
             st.markdown("""
 <table style="width:100%; font-family:sans-serif; font-size:13px; text-align:center; border-collapse: collapse; border: none;">
-    <tr><th colspan="3" style="background-color:#003366; color:white; padding:8px; border: 1px solid white;">Score NEXO™</th></tr>
+    <tr><th colspan="3" style="background-color:#143F6A; color:white; padding:8px; border: 1px solid white;">Score NEXO™</th></tr>
     <tr>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 33%;">Volatilité</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 33%;">Poids du Décrément</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 33%;">Ecart</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 33%;">Volatilité</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 33%;">Poids du Décrément</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 33%;">Ecart</td>
     </tr>
     <tr>
         <td style="padding:12px; font-weight:bold; color:{color_vol}; background-color:white; font-size:16px; border: 1px solid #e6e9ed;">{vol_text}</td>
@@ -566,10 +566,10 @@ elif selected_nav == "Fiche Détaillée Actif":
                 is_base_100 = (benchmark_prices is not None)
                 title_text = "Évolution historique de la performance (Base 100)" if is_base_100 else "Évolution historique du cours"
                 
-                st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; color:#003366;'>{title_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; color:#143F6A;'>{title_text}</div>", unsafe_allow_html=True)
                 fig_pres = go.Figure()
                 
-                main_color = '#003366'
+                main_color = '#143F6A'
                 
                 if is_base_100:
                     common_idx = asset_prices.index.intersection(benchmark_prices.index)
@@ -588,7 +588,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                     fig_pres.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name=ticker_disp, line=dict(color=main_color, width=2.5)))
                     
                 fig_pres.update_layout(
-                    title=dict(text=title_text, font=dict(size=13, color='#003366', family='Arial', weight='bold'), x=0.5),
+                    title=dict(text=title_text, font=dict(size=13, color='#143F6A', family='Arial', weight='bold'), x=0.5),
                     margin=dict(l=40, r=10, t=40, b=80), 
                     height=280, 
                     plot_bgcolor='white', 
@@ -660,18 +660,18 @@ elif selected_nav == "Fiche Détaillée Actif":
 <table style="width:100%; font-family:sans-serif; font-size:12px; text-align:center; margin-top: 15px; border-collapse: collapse; border: none;">
     <tr>
         <td style="border:none; width: 16%; background-color: white;"></td>
-        <th colspan="2" style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 28%;">10 ans</th>
-        <th colspan="2" style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 28%;">5 ans</th>
-        <th colspan="2" style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 28%;">1 an</th>
+        <th colspan="2" style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 28%;">10 ans</th>
+        <th colspan="2" style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 28%;">5 ans</th>
+        <th colspan="2" style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 28%;">1 an</th>
     </tr>
     <tr>
         <td style="border:none; background-color: white;"></td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white; width: 14%;">{bench_ticker_disp}</td>
     </tr>
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Performance<br>annualisée</td>
@@ -722,15 +722,15 @@ elif selected_nav == "Fiche Détaillée Actif":
 <table style="width:100%; font-family:sans-serif; font-size:12px; text-align:center; margin-top: 15px; border-collapse: collapse; border: none;">
     <tr>
         <td style="border:none; width: 25%; background-color: white;"></td>
-        <th style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 25%;">10 ans</th>
-        <th style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 25%;">5 ans</th>
-        <th style="background-color:#003366; color:white; padding:6px; border: 1px solid white; width: 25%;">1 an</th>
+        <th style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 25%;">10 ans</th>
+        <th style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 25%;">5 ans</th>
+        <th style="background-color:#143F6A; color:white; padding:6px; border: 1px solid white; width: 25%;">1 an</th>
     </tr>
     <tr>
         <td style="border:none; background-color: white;"></td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
-        <td style="background-color:#1c4b78; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
+        <td style="background-color:#22578A; color:white; padding:6px; border: 1px solid white;">{ticker_disp}</td>
     </tr>
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Performance<br>annualisée</td>
@@ -932,14 +932,14 @@ elif selected_nav == "Fiche Détaillée Actif":
                 sma50 = asset_model.sma(50)
                 sma200 = asset_model.sma(200)
                 
-                fig.add_trace(go.Scatter(x=asset_norm.index, y=asset_norm, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
+                fig.add_trace(go.Scatter(x=asset_norm.index, y=asset_norm, mode='lines', name='Prix', line=dict(color='#143F6A', width=2)))
                 fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
                 fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
             else:
                 sma50 = asset_model.sma(50)
                 sma200 = asset_model.sma(200)
                 
-                fig.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name='Prix', line=dict(color='#003366', width=2)))
+                fig.add_trace(go.Scatter(x=asset_prices.index, y=asset_prices, mode='lines', name='Prix', line=dict(color='#143F6A', width=2)))
                 fig.add_trace(go.Scatter(x=sma50.index, y=sma50, mode='lines', name='SMA 50', line=dict(color='#00d2ff', width=1.5)))
                 fig.add_trace(go.Scatter(x=sma200.index, y=sma200, mode='lines', name='SMA 200', line=dict(color='#ff512f', width=1.5)))
 
