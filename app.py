@@ -30,25 +30,14 @@ from financial_core import (
 # 1. Configuration de la page
 st.set_page_config(page_title="Base de Données", layout="wide", initial_sidebar_state="expanded")
 
-# --- CSS & DESIGN SYSTEM INSTITUTIONNEL (Axe 3) ---
+# --- CSS DESIGN SYSTEM ÉPURÉ ---
 st.markdown("""
 <style>
-    :root {
-        --primary-color: #143F6A !important;
-    }
-
-    /* Espacement supérieur pour éviter tout chevauchement */
-    .block-container {
-        padding-top: 2.2rem !important;
-        padding-bottom: 3rem !important;
-    }
-
     /* Titres principaux */
     .main-header {
         color: #143F6A;
         font-weight: 700;
         font-size: 26px;
-        margin-top: 0px;
         margin-bottom: 18px;
         border-bottom: 2px solid #143F6A;
         padding-bottom: 8px;
@@ -61,137 +50,13 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* Pastilles Multiselect (Tags sélectionnés) - Remplacement complet du rouge */
-    span[data-baseweb="tag"],
-    div[data-baseweb="tag"],
-    [data-testid="stMultiSelect"] span,
-    [data-testid="stMultiSelect"] [role="button"],
-    [data-testid="stMultiSelect"] div[class*="tag"],
-    [data-testid="stMultiSelect"] span[class*="tag"] {
-        background-color: #143F6A !important;
-        border-color: #143F6A !important;
-        color: white !important;
-    }
-    [data-testid="stMultiSelect"] span *,
-    [data-testid="stMultiSelect"] [role="button"] * {
-        color: white !important;
-        fill: white !important;
-    }
-
-    /* Onglets Streamlit (Tabs) - Remplacement complet du rouge natif */
-    .stTabs [data-baseweb="tab-list"],
-    div[data-testid="stTabs"] [role="tablist"] {
-        gap: 8px;
-        border-bottom: 1px solid #e2e8f0;
-    }
-    .stTabs [data-baseweb="tab"],
-    div[data-testid="stTabs"] [role="tab"] {
-        font-size: 14px;
-        font-weight: 500;
-        color: #64748b !important;
-        padding: 8px 16px;
-        background-color: transparent;
-        border: none;
-    }
-    .stTabs [data-baseweb="tab"]:hover,
-    .stTabs [data-baseweb="tab"]:hover *,
-    div[data-testid="stTabs"] [role="tab"]:hover,
-    div[data-testid="stTabs"] [role="tab"]:hover * {
-        color: #143F6A !important;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"],
-    .stTabs [data-baseweb="tab"][aria-selected="true"] *,
-    .stTabs button[aria-selected="true"],
-    .stTabs button[aria-selected="true"] *,
-    div[data-testid="stTabs"] [role="tab"][aria-selected="true"],
-    div[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
-        color: #143F6A !important;
-        font-weight: 700 !important;
-    }
-    .stTabs [data-baseweb="tab-highlight"],
-    div[data-baseweb="tab-highlight"],
-    div[data-testid="stTabs"] [role="tablist"] [aria-selected="true"]::after,
-    div[data-testid="stTabs"] [role="tab"][aria-selected="true"]::after {
-        background-color: #143F6A !important;
-        border-color: #143F6A !important;
-        height: 3px !important;
-        border-radius: 2px;
-    }
-    .stTabs [data-baseweb="tab-border"] {
-        background-color: #e2e8f0 !important;
-    }
-
-    /* Navigation & Radio boutons - Remplacement complet (BaseWeb & React-Aria) */
-    div[data-testid="stRadio"] [role="radiogroup"] label {
-        padding: 4px 8px;
-        border-radius: 6px;
-        transition: background-color 0.15s ease;
-    }
-    div[data-testid="stRadio"] [role="radiogroup"] label:hover {
-        background-color: #f1f5f9;
-    }
-    /* Selecteurs Universels Radio pour Streamlit moderne */
-    div[data-testid="stRadioOption"][data-selected="true"] div,
-    div[data-testid="stRadioOption"][data-checked="true"] div,
-    div[data-testid="stRadioOption"] input:checked ~ div,
-    div[data-testid="stRadioOption"] input:checked + div,
-    div[data-testid="stRadio"] div[aria-checked="true"],
-    div[data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child,
-    div[data-testid="stRadio"] label[data-checked="true"] div:first-child {
-        border-color: #143F6A !important;
-        background-color: #143F6A !important;
-    }
-    div[data-testid="stRadioOption"][data-selected="true"] div div,
-    div[data-testid="stRadioOption"][data-checked="true"] div div,
-    div[data-testid="stRadioOption"] input:checked ~ div div,
-    div[data-testid="stRadio"] div[aria-checked="true"] div,
-    div[data-testid="stRadio"] div[data-baseweb="radio"] div div,
-    div[data-testid="stRadio"] label[data-checked="true"] div div {
-        background-color: white !important;
-    }
-
-    /* Cases à cocher (Checkboxes) - Remplacement complet (BaseWeb & React-Aria) */
-    div[data-testid="stCheckbox"] div:has(> svg),
-    div[data-testid="stCheckbox"] label:has(svg) > div:first-child,
-    div[data-testid="stCheckbox"] input[type="checkbox"]:checked ~ div,
-    div[data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
-    div[data-testid="stCheckbox"] [data-baseweb="checkbox"][aria-checked="true"] > div:first-child,
-    div[data-testid="stCheckbox"] label[data-checked="true"] > div:first-child,
-    div[data-testid="stCheckbox"] [aria-checked="true"] > div {
-        background-color: #143F6A !important;
-        border-color: #143F6A !important;
-    }
-    div[data-testid="stCheckbox"] svg,
-    div[data-testid="stCheckbox"] svg polyline {
-        stroke: white !important;
-        color: white !important;
-        fill: none !important;
-    }
-
-    /* Champs de saisie, sélecteurs & Multiselect (Focus & Hover) */
-    div[data-baseweb="input"]:focus-within,
-    div[data-baseweb="base-input"]:focus-within,
-    div[data-baseweb="select"]:focus-within,
-    div[data-baseweb="select"] > div:focus-within,
-    div[data-baseweb="select"] *:focus-within,
-    div[data-testid="stTextInput"] div:focus-within,
-    div[data-testid="stSelectbox"] div:focus-within,
-    div[data-testid="stMultiSelect"] div:focus-within,
-    input:focus,
-    input:focus-visible {
-        border-color: #143F6A !important;
-        box-shadow: 0 0 0 1px #143F6A !important;
-        outline: none !important;
-    }
-
-    /* Cartes KPI modernes avec bordures fines et ombres douces */
+    /* Cartes KPI modernes */
     [data-testid="stMetric"] {
         background-color: #ffffff;
         border: 1px solid #e6e9ed;
         border-radius: 8px;
         padding: 12px 16px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-        transition: all 0.2s ease-in-out;
     }
     [data-testid="stMetric"]:hover {
         border-color: #143F6A;
@@ -229,21 +94,6 @@ st.markdown("""
         background-color: #e6f0fa;
         color: #143F6A;
         border: 1px solid #c2daf2;
-    }
-
-    /* Boutons standards */
-    button[data-testid="baseButton-primary"] {
-        background-color: #143F6A !important;
-        border-color: #143F6A !important;
-        color: white !important;
-    }
-    button[data-testid="baseButton-primary"]:hover {
-        background-color: #0f2e4e !important;
-        border-color: #0f2e4e !important;
-    }
-    button[data-testid="baseButton-secondary"]:hover {
-        border-color: #143F6A !important;
-        color: #143F6A !important;
     }
 </style>
 """, unsafe_allow_html=True)
