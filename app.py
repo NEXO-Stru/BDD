@@ -33,11 +33,22 @@ st.set_page_config(page_title="Base de Données", layout="wide", initial_sidebar
 # --- CSS & DESIGN SYSTEM INSTITUTIONNEL (Axe 3) ---
 st.markdown("""
 <style>
+    :root {
+        --primary-color: #143F6A !important;
+    }
+
+    /* Espacement supérieur pour éviter tout chevauchement */
+    .block-container {
+        padding-top: 2.2rem !important;
+        padding-bottom: 3rem !important;
+    }
+
     /* Titres principaux */
     .main-header {
         color: #143F6A;
         font-weight: 700;
         font-size: 26px;
+        margin-top: 0px;
         margin-bottom: 18px;
         border-bottom: 2px solid #143F6A;
         padding-bottom: 8px;
@@ -48,6 +59,83 @@ st.markdown("""
         font-weight: 600;
         margin-top: 15px;
         margin-bottom: 12px;
+    }
+
+    /* Onglets Streamlit (Tabs) - Remplacement du rouge natif */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 14px;
+        font-weight: 500;
+        color: #64748b;
+        padding: 8px 16px;
+        background-color: transparent;
+        border: none;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #143F6A !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"],
+    .stTabs [data-baseweb="tab"][aria-selected="true"] p {
+        color: #143F6A !important;
+        font-weight: 700 !important;
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #143F6A !important;
+        height: 3px !important;
+        border-radius: 2px;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        background-color: #e2e8f0 !important;
+    }
+
+    /* Navigation & Radio boutons - Remplacement du rouge natif */
+    div[data-testid="stRadio"] [role="radiogroup"] label {
+        padding: 4px 8px;
+        border-radius: 6px;
+        transition: background-color 0.15s ease;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] label:hover {
+        background-color: #f1f5f9;
+    }
+    div[data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child {
+        border-color: #cbd5e1;
+    }
+    div[data-testid="stRadio"] div[aria-checked="true"] > div:first-child {
+        border-color: #143F6A !important;
+        background-color: #143F6A !important;
+    }
+    div[data-testid="stRadio"] div[aria-checked="true"] > div > div {
+        background-color: white !important;
+    }
+    div[data-testid="stRadio"] input[type="radio"]:checked + div {
+        border-color: #143F6A !important;
+        background-color: #143F6A !important;
+    }
+
+    /* Cases à cocher (Checkboxes) - Remplacement du rouge natif */
+    div[data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
+    div[data-testid="stCheckbox"] [data-baseweb="checkbox"][aria-checked="true"] > div:first-child,
+    div[data-testid="stCheckbox"] label[data-checked="true"] [data-baseweb="checkbox"] > div:first-child,
+    div[data-testid="stCheckbox"] [aria-checked="true"] > div {
+        background-color: #143F6A !important;
+        border-color: #143F6A !important;
+    }
+    div[data-testid="stCheckbox"] [aria-checked="true"] svg {
+        color: white !important;
+        fill: white !important;
+    }
+
+    /* Champs de saisie & sélecteurs (Focus & Hover) */
+    div[data-baseweb="input"]:focus-within,
+    div[data-baseweb="base-input"]:focus-within,
+    div[data-baseweb="select"] > div:focus-within,
+    div[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within {
+        border-color: #143F6A !important;
+        box-shadow: 0 0 0 1px #143F6A !important;
     }
 
     /* Cartes KPI modernes avec bordures fines et ombres douces */
@@ -95,6 +183,21 @@ st.markdown("""
         background-color: #e6f0fa;
         color: #143F6A;
         border: 1px solid #c2daf2;
+    }
+
+    /* Boutons standards */
+    button[data-testid="baseButton-primary"] {
+        background-color: #143F6A !important;
+        border-color: #143F6A !important;
+        color: white !important;
+    }
+    button[data-testid="baseButton-primary"]:hover {
+        background-color: #0f2e4e !important;
+        border-color: #0f2e4e !important;
+    }
+    button[data-testid="baseButton-secondary"]:hover {
+        border-color: #143F6A !important;
+        color: #143F6A !important;
     }
 </style>
 """, unsafe_allow_html=True)
