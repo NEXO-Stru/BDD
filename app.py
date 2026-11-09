@@ -61,29 +61,60 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* Onglets Streamlit (Tabs) - Remplacement du rouge natif */
-    .stTabs [data-baseweb="tab-list"] {
+    /* Pastilles Multiselect (Tags sélectionnés) - Remplacement du rouge natif */
+    span[data-baseweb="tag"],
+    div[data-baseweb="tag"],
+    [data-testid="stMultiSelect"] span[data-baseweb="tag"],
+    [data-testid="stMultiSelect"] div[data-baseweb="tag"] {
+        background-color: #143F6A !important;
+        border-color: #143F6A !important;
+        color: white !important;
+    }
+    span[data-baseweb="tag"] span,
+    div[data-baseweb="tag"] span {
+        color: white !important;
+    }
+    span[data-baseweb="tag"] svg,
+    div[data-baseweb="tag"] svg {
+        fill: white !important;
+        color: white !important;
+    }
+
+    /* Onglets Streamlit (Tabs) - Remplacement complet du rouge natif */
+    .stTabs [data-baseweb="tab-list"],
+    div[data-testid="stTabs"] [role="tablist"] {
         gap: 8px;
         border-bottom: 1px solid #e2e8f0;
     }
-    .stTabs [data-baseweb="tab"] {
+    .stTabs [data-baseweb="tab"],
+    div[data-testid="stTabs"] [role="tab"] {
         font-size: 14px;
         font-weight: 500;
-        color: #64748b;
+        color: #64748b !important;
         padding: 8px 16px;
         background-color: transparent;
         border: none;
     }
-    .stTabs [data-baseweb="tab"]:hover {
+    .stTabs [data-baseweb="tab"]:hover,
+    .stTabs [data-baseweb="tab"]:hover *,
+    div[data-testid="stTabs"] [role="tab"]:hover,
+    div[data-testid="stTabs"] [role="tab"]:hover * {
         color: #143F6A !important;
     }
     .stTabs [data-baseweb="tab"][aria-selected="true"],
-    .stTabs [data-baseweb="tab"][aria-selected="true"] p {
+    .stTabs [data-baseweb="tab"][aria-selected="true"] *,
+    .stTabs button[aria-selected="true"],
+    .stTabs button[aria-selected="true"] *,
+    div[data-testid="stTabs"] [role="tab"][aria-selected="true"],
+    div[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
         color: #143F6A !important;
         font-weight: 700 !important;
     }
-    .stTabs [data-baseweb="tab-highlight"] {
+    .stTabs [data-baseweb="tab-highlight"],
+    div[data-baseweb="tab-highlight"],
+    div[data-testid="stTabs"] [role="tab"][aria-selected="true"]::after {
         background-color: #143F6A !important;
+        border-color: #143F6A !important;
         height: 3px !important;
         border-radius: 2px;
     }
@@ -103,11 +134,13 @@ st.markdown("""
     div[data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child {
         border-color: #cbd5e1;
     }
-    div[data-testid="stRadio"] div[aria-checked="true"] > div:first-child {
+    div[data-testid="stRadio"] div[aria-checked="true"] > div:first-child,
+    div[data-testid="stRadio"] label[data-checked="true"] div[data-baseweb="radio"] > div:first-child {
         border-color: #143F6A !important;
         background-color: #143F6A !important;
     }
-    div[data-testid="stRadio"] div[aria-checked="true"] > div > div {
+    div[data-testid="stRadio"] div[aria-checked="true"] > div > div,
+    div[data-testid="stRadio"] label[data-checked="true"] div[data-baseweb="radio"] > div > div {
         background-color: white !important;
     }
     div[data-testid="stRadio"] input[type="radio"]:checked + div {
@@ -117,13 +150,15 @@ st.markdown("""
 
     /* Cases à cocher (Checkboxes) - Remplacement du rouge natif */
     div[data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
+    div[data-testid="stCheckbox"] input[type="checkbox"]:checked ~ div,
     div[data-testid="stCheckbox"] [data-baseweb="checkbox"][aria-checked="true"] > div:first-child,
     div[data-testid="stCheckbox"] label[data-checked="true"] [data-baseweb="checkbox"] > div:first-child,
     div[data-testid="stCheckbox"] [aria-checked="true"] > div {
         background-color: #143F6A !important;
         border-color: #143F6A !important;
     }
-    div[data-testid="stCheckbox"] [aria-checked="true"] svg {
+    div[data-testid="stCheckbox"] [aria-checked="true"] svg,
+    div[data-testid="stCheckbox"] label[data-checked="true"] svg {
         color: white !important;
         fill: white !important;
     }
@@ -132,10 +167,14 @@ st.markdown("""
     div[data-baseweb="input"]:focus-within,
     div[data-baseweb="base-input"]:focus-within,
     div[data-baseweb="select"] > div:focus-within,
+    div[data-baseweb="select"] *:focus-within,
     div[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within {
+    div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within,
+    input:focus,
+    input:focus-visible {
         border-color: #143F6A !important;
         box-shadow: 0 0 0 1px #143F6A !important;
+        outline: none !important;
     }
 
     /* Cartes KPI modernes avec bordures fines et ombres douces */
