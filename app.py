@@ -61,23 +61,21 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* Pastilles Multiselect (Tags sélectionnés) - Remplacement du rouge natif */
+    /* Pastilles Multiselect (Tags sélectionnés) - Remplacement complet du rouge */
     span[data-baseweb="tag"],
     div[data-baseweb="tag"],
-    [data-testid="stMultiSelect"] span[data-baseweb="tag"],
-    [data-testid="stMultiSelect"] div[data-baseweb="tag"] {
+    [data-testid="stMultiSelect"] span,
+    [data-testid="stMultiSelect"] [role="button"],
+    [data-testid="stMultiSelect"] div[class*="tag"],
+    [data-testid="stMultiSelect"] span[class*="tag"] {
         background-color: #143F6A !important;
         border-color: #143F6A !important;
         color: white !important;
     }
-    span[data-baseweb="tag"] span,
-    div[data-baseweb="tag"] span {
+    [data-testid="stMultiSelect"] span *,
+    [data-testid="stMultiSelect"] [role="button"] * {
         color: white !important;
-    }
-    span[data-baseweb="tag"] svg,
-    div[data-baseweb="tag"] svg {
         fill: white !important;
-        color: white !important;
     }
 
     /* Onglets Streamlit (Tabs) - Remplacement complet du rouge natif */
@@ -112,6 +110,7 @@ st.markdown("""
     }
     .stTabs [data-baseweb="tab-highlight"],
     div[data-baseweb="tab-highlight"],
+    div[data-testid="stTabs"] [role="tablist"] [aria-selected="true"]::after,
     div[data-testid="stTabs"] [role="tab"][aria-selected="true"]::after {
         background-color: #143F6A !important;
         border-color: #143F6A !important;
@@ -122,7 +121,7 @@ st.markdown("""
         background-color: #e2e8f0 !important;
     }
 
-    /* Navigation & Radio boutons - Remplacement du rouge natif */
+    /* Navigation & Radio boutons - Remplacement complet (BaseWeb & React-Aria) */
     div[data-testid="stRadio"] [role="radiogroup"] label {
         padding: 4px 8px;
         border-radius: 6px;
@@ -131,45 +130,53 @@ st.markdown("""
     div[data-testid="stRadio"] [role="radiogroup"] label:hover {
         background-color: #f1f5f9;
     }
-    div[data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child {
-        border-color: #cbd5e1;
-    }
-    div[data-testid="stRadio"] div[aria-checked="true"] > div:first-child,
-    div[data-testid="stRadio"] label[data-checked="true"] div[data-baseweb="radio"] > div:first-child {
+    /* Selecteurs Universels Radio pour Streamlit moderne */
+    div[data-testid="stRadioOption"][data-selected="true"] div,
+    div[data-testid="stRadioOption"][data-checked="true"] div,
+    div[data-testid="stRadioOption"] input:checked ~ div,
+    div[data-testid="stRadioOption"] input:checked + div,
+    div[data-testid="stRadio"] div[aria-checked="true"],
+    div[data-testid="stRadio"] div[data-baseweb="radio"] > div:first-child,
+    div[data-testid="stRadio"] label[data-checked="true"] div:first-child {
         border-color: #143F6A !important;
         background-color: #143F6A !important;
     }
-    div[data-testid="stRadio"] div[aria-checked="true"] > div > div,
-    div[data-testid="stRadio"] label[data-checked="true"] div[data-baseweb="radio"] > div > div {
+    div[data-testid="stRadioOption"][data-selected="true"] div div,
+    div[data-testid="stRadioOption"][data-checked="true"] div div,
+    div[data-testid="stRadioOption"] input:checked ~ div div,
+    div[data-testid="stRadio"] div[aria-checked="true"] div,
+    div[data-testid="stRadio"] div[data-baseweb="radio"] div div,
+    div[data-testid="stRadio"] label[data-checked="true"] div div {
         background-color: white !important;
     }
-    div[data-testid="stRadio"] input[type="radio"]:checked + div {
-        border-color: #143F6A !important;
-        background-color: #143F6A !important;
-    }
 
-    /* Cases à cocher (Checkboxes) - Remplacement du rouge natif */
-    div[data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
+    /* Cases à cocher (Checkboxes) - Remplacement complet (BaseWeb & React-Aria) */
+    div[data-testid="stCheckbox"] div:has(> svg),
+    div[data-testid="stCheckbox"] label:has(svg) > div:first-child,
     div[data-testid="stCheckbox"] input[type="checkbox"]:checked ~ div,
+    div[data-testid="stCheckbox"] input[type="checkbox"]:checked + div,
     div[data-testid="stCheckbox"] [data-baseweb="checkbox"][aria-checked="true"] > div:first-child,
-    div[data-testid="stCheckbox"] label[data-checked="true"] [data-baseweb="checkbox"] > div:first-child,
+    div[data-testid="stCheckbox"] label[data-checked="true"] > div:first-child,
     div[data-testid="stCheckbox"] [aria-checked="true"] > div {
         background-color: #143F6A !important;
         border-color: #143F6A !important;
     }
-    div[data-testid="stCheckbox"] [aria-checked="true"] svg,
-    div[data-testid="stCheckbox"] label[data-checked="true"] svg {
+    div[data-testid="stCheckbox"] svg,
+    div[data-testid="stCheckbox"] svg polyline {
+        stroke: white !important;
         color: white !important;
-        fill: white !important;
+        fill: none !important;
     }
 
-    /* Champs de saisie & sélecteurs (Focus & Hover) */
+    /* Champs de saisie, sélecteurs & Multiselect (Focus & Hover) */
     div[data-baseweb="input"]:focus-within,
     div[data-baseweb="base-input"]:focus-within,
+    div[data-baseweb="select"]:focus-within,
     div[data-baseweb="select"] > div:focus-within,
     div[data-baseweb="select"] *:focus-within,
-    div[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within,
+    div[data-testid="stTextInput"] div:focus-within,
+    div[data-testid="stSelectbox"] div:focus-within,
+    div[data-testid="stMultiSelect"] div:focus-within,
     input:focus,
     input:focus-visible {
         border-color: #143F6A !important;
