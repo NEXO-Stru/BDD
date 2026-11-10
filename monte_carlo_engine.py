@@ -1146,14 +1146,16 @@ class SimulationEngine:
                 fill='tonexty',
                 fillcolor=f"rgba({int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}, 0.12)",
                 name=f"{nom_idx} [P10-P90]",
-                legendgroup=nom_idx
+                legendgroup=nom_idx,
+                showlegend=False
             ))
             # Médiane (trait plein épais)
             fig.add_trace(go.Scatter(
                 x=axe_temps, y=med, mode='lines',
                 line=dict(color=color, width=2.8),
-                name=f"{nom_idx} (Médiane)",
-                legendgroup=nom_idx
+                name=nom_idx,
+                legendgroup=nom_idx,
+                showlegend=True
             ))
             
         fig.update_layout(
@@ -1163,15 +1165,15 @@ class SimulationEngine:
             template="plotly_white",
             legend=dict(
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
+                yanchor="top",
+                y=-0.22,
                 xanchor="center",
                 x=0.5,
                 bgcolor="rgba(255,255,255,0.9)",
                 bordercolor="#e2e8f0",
                 borderwidth=1
             ),
-            margin=dict(l=60, r=40, t=110, b=60)
+            margin=dict(l=60, r=40, t=60, b=90)
         )
         return fig
 
@@ -1250,14 +1252,16 @@ class SimulationEngine:
                 fill='tonexty',
                 fillcolor=f"rgba({rgb_col}, 0.15)",
                 name=f"{nom_idx} [Q25 - Q75]",
-                legendgroup=nom_idx
+                legendgroup=nom_idx,
+                showlegend=False
             ))
             # Médiane (trait plein épais)
             fig.add_trace(go.Scatter(
                 x=axe_temps, y=med_courbe, mode='lines',
                 line=dict(color=color, width=2.8),
-                name=f"{nom_idx} (Médiane)",
+                name=nom_idx,
                 legendgroup=nom_idx,
+                showlegend=True,
                 hovertemplate=f"<b>{nom_idx}</b><br>Horizon: %{{x:.2f}} ans<br>Écart Médian: %{{y:+.2f}}%<extra></extra>"
             ))
             
@@ -1276,15 +1280,15 @@ class SimulationEngine:
             template="plotly_white",
             legend=dict(
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
+                yanchor="top",
+                y=-0.22,
                 xanchor="center",
                 x=0.5,
                 bgcolor="rgba(255,255,255,0.9)",
                 bordercolor="#e2e8f0",
                 borderwidth=1
             ),
-            margin=dict(l=60, r=40, t=110, b=60)
+            margin=dict(l=60, r=40, t=60, b=90)
         )
         return fig
 
@@ -1354,8 +1358,17 @@ class SimulationEngine:
             title="<b>Comparaison des Indicateurs Clés de Risque et de Rendement</b>",
             yaxis_title="<b>Pourcentage (%)</b>",
             template="plotly_white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            margin=dict(l=50, r=40, t=90, b=60)
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=90)
         )
         return fig
 
@@ -1395,8 +1408,17 @@ class SimulationEngine:
             xaxis_title="<b>Date de Constatation</b>",
             yaxis_title="<b>Fréquence de Rappel (%)</b>",
             template="plotly_white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            margin=dict(l=50, r=40, t=90, b=60)
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=90)
         )
         return fig
 
