@@ -283,7 +283,6 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                 # Graphique 1 : Trajectoires Médianes
                 st.markdown("<div class='section-title'>1. Trajectoires Médianes & Fuseaux Inter-centiles [P10 - P90]</div>", unsafe_allow_html=True)
-                st.caption("Évolution comparée des indices normalisés en % de S0 sur la même matrice de tirages aléatoires.")
                 fig_multi_traj = moteur.plot_multi_trajectoires(results_multi, scenario_krach)
                 st.plotly_chart(fig_multi_traj, use_container_width=True, config={'displayModeBar': False})
 
@@ -291,7 +290,6 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                 # Graphique 2 : Dynamique temporelle des écarts
                 st.markdown("<div class='section-title'>2. Dynamique Temporelle des Écarts (Décrément - Price Return)</div>", unsafe_allow_html=True)
-                st.caption("Médiane en trait plein et couloir interquartile [Q25 - Q75] en voile pour chaque indice au fil des ans.")
                 fig_multi_ecarts = moteur.plot_multi_courbes_ecarts(results_multi, scenario_krach, filter_active=False)
                 st.plotly_chart(fig_multi_ecarts, use_container_width=True, config={'displayModeBar': False})
 
@@ -372,7 +370,6 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                 # Graphique 3 : Écarts sur trajectoires non rappelées
                 st.markdown("<div class='section-title'>3. Dynamique Temporelle des Écarts sur Trajectoires Non Rappelées</div>", unsafe_allow_html=True)
-                st.caption("Écart subi par un investisseur encore investi dans le produit (médiane et couloir [Q25 - Q75]).")
                 fig_multi_ecarts_pricing = moteur.plot_multi_courbes_ecarts(
                     results_multi_pricing, scenario_krach, filter_active=True, product=mon_produit
                 )

@@ -1159,7 +1159,7 @@ class SimulationEngine:
             ))
             
         fig.update_layout(
-            title="<b>Comparaison Temporelle des Indices (% du Spot Initial S0)</b><br><sup>Médianes et fuseaux inter-centiles [P10 - P90] sur tirages aléatoires strictement appariés</sup>",
+            title="<b>Comparaison Temporelle des Indices (% du Spot Initial S0)</b>",
             xaxis_title="<b>Horizon Temporel (Années)</b>",
             yaxis_title="<b>Niveau de l'Indice (% de S0)</b>",
             template="plotly_white",
@@ -1274,7 +1274,7 @@ class SimulationEngine:
         
         titre_actif = " sur Trajectoires Non Rappelées" if filter_active else ""
         fig.update_layout(
-            title=f"<b>Évolution Temporelle des Écarts (Décrément - Price Return){titre_actif}</b><br><sup>Médianes (traits pleins) et couloirs interquartiles [Q25 - Q75] (voiles) en % du Spot Initial S0</sup>",
+            title=f"<b>Évolution Temporelle des Écarts (Décrément - Price Return){titre_actif}</b>",
             xaxis_title="<b>Horizon Temporel (Années)</b>",
             yaxis_title="<b>Écart : (Dec - PR) / S0 (%)</b>",
             template="plotly_white",
@@ -1294,20 +1294,32 @@ class SimulationEngine:
 
     def plot_multi_dispersion_ecarts(self, results: dict, scenario: MarketScenario):
         """Affiche des boîtes à moustaches comparant la dispersion de l'écart (Dec - PR)/S0 à maturité pour chaque indice."""
+        import re
         fig = go.Figure()
         palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0891b2']
         
         for idx_i, (nom_idx, data) in enumerate(results.items()):
             color = palette[idx_i % len(palette)]
-            s0 = data["index"].niveau_initial
-            ecart_maturite_pct = ((data["traj_dec"][:, -1] - data["traj_pr"][:, -1]) / s0) * 100.0
+            s0 = float(data["index"].niveau_initial) if (data["index"].niveau_initial and float(data["index"].niveau_initial) > 0) else 1000.0
+            diff = data["traj_dec"][:, -1] - data["traj_pr"][:, -1]
+            ecart_maturite_pct = (diff / s0) * 100.0
+            ecart_maturite_pct = ecart_maturite_pct[np.isfinite(ecart_maturite_pct)]
             
+            if len(ecart_maturite_pct) == 0:
+                continue
+                
             p1 = np.percentile(ecart_maturite_pct, 1)
             p99 = np.percentile(ecart_maturite_pct, 99)
+            sub = ecart_maturite_pct[(ecart_maturite_pct >= p1) & (ecart_maturite_pct <= p99)]
+            
+            # Nom court pour l'axe horizontal pour éviter les chevauchements
+            m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+            ticker_short = m.group(1) if m else ((nom_idx[:25] + '...') if len(nom_idx) > 25 else nom_idx)
+            x_label = f"Indice {idx_i + 1} : {ticker_short}"
             
             fig.add_trace(go.Box(
-                y=ecart_maturite_pct[(ecart_maturite_pct >= p1) & (ecart_maturite_pct <= p99)],
-                name=nom_idx,
+                y=sub,
+                name=x_label,
                 marker_color=color,
                 boxpoints=False,
                 whiskerwidth=0.4,
@@ -1316,38 +1328,46 @@ class SimulationEngine:
             
         fig.add_hline(y=0, line_dash="dash", line_color="#94a3b8", line_width=1.5)
         fig.update_layout(
-            title="<b>Dispersion Comparée de l'Écart (Décrément - Price Return) à Maturité (% de S0)</b><br><sup>Bornée entre les centiles P1 et P99</sup>",
+            title="<b>Dispersion Comparée de l'Écart (Décrément - Price Return) à Maturité</b>",
             yaxis_title="<b>Écart (Dec - PR) / S0 (%)</b>",
             template="plotly_white",
             showlegend=False,
-            margin=dict(l=60, r=40, t=90, b=60)
+            xaxis=dict(tickangle=0),
+            margin=dict(l=60, r=40, t=50, b=50)
         )
         return fig
 
     def plot_multi_pricing_kpis(self, results: dict):
         """Graphique à barres comparatif des KPIs majeurs de pricing."""
+        import re
         indices_noms = list(results.keys())
         taux_autocall = [results[k]["pct_rappel_dec"] for k in indices_noms]
         taux_pdi = [results[k]["pct_pdi_dec"] for k in indices_noms]
         payoffs = [results[k]["moy_payoff_dec"] for k in indices_noms]
         
+        short_noms = []
+        for idx_i, nom_idx in enumerate(indices_noms):
+            m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+            ticker_short = m.group(1) if m else ((nom_idx[:25] + '...') if len(nom_idx) > 25 else nom_idx)
+            short_noms.append(f"Indice {idx_i + 1} : {ticker_short}")
+        
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            x=indices_noms, y=taux_autocall,
+            x=short_noms, y=taux_autocall,
             name="Taux d'Autocall (%)",
             marker_color="#16a34a",
             text=[f"{v:.1f}%" for v in taux_autocall],
             textposition="auto"
         ))
         fig.add_trace(go.Bar(
-            x=indices_noms, y=taux_pdi,
+            x=short_noms, y=taux_pdi,
             name="Probabilité sous PDI (%)",
             marker_color="#dc2626",
             text=[f"{v:.2f}%" for v in taux_pdi],
             textposition="auto"
         ))
         fig.add_trace(go.Bar(
-            x=indices_noms, y=payoffs,
+            x=short_noms, y=payoffs,
             name="Espérance de Gain (%)",
             marker_color="#2563eb",
             text=[f"{v:.1f}%" for v in payoffs],
@@ -1358,6 +1378,7 @@ class SimulationEngine:
             title="<b>Comparaison des Indicateurs Clés de Risque et de Rendement</b>",
             yaxis_title="<b>Pourcentage (%)</b>",
             template="plotly_white",
+            xaxis=dict(tickangle=0),
             legend=dict(
                 orientation="h",
                 yanchor="top",
