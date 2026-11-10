@@ -202,7 +202,12 @@ if "nav_radio" not in st.session_state:
 st.sidebar.title("Base de Données")
 st.sidebar.divider()
 
-nav_options = ["Univers d'Investissement", "Fiche Détaillée Actif", "Comparaison Multi-Actifs"]
+nav_options = [
+    "Univers d'Investissement",
+    "Fiche Détaillée Actif",
+    "Comparaison Multi-Actifs",
+    "Stress Tests & Pricing"
+]
 
 selected_nav = st.sidebar.radio(
     "Navigation",
@@ -1485,3 +1490,10 @@ elif selected_nav == "Comparaison Multi-Actifs":
                     if "compare_exports" in st.session_state:
                         st.download_button("Télécharger Excel", st.session_state["compare_exports"]["excel"], file_name="comparaison.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                         st.download_button("Télécharger PowerPoint", st.session_state["compare_exports"]["pptx"], file_name="comparaison.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
+# ==============================================================================
+# MODULE 4 : STRESS TESTS & PRICING AUTOCALL
+# ==============================================================================
+elif selected_nav == "Stress Tests & Pricing":
+    from stress_tests import render_stress_tests_view
+    render_stress_tests_view(repo, assets_df, prices_pivot)

@@ -11,3 +11,4 @@ python-pptx
 kaleido
 xlsxwriter
 supabase
+matplotlib
