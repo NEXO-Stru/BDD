@@ -38,24 +38,29 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
     if asset_id in prices_pivot.columns:
         s_prices = prices_pivot[asset_id].dropna()
         if len(s_prices) >= 20:
-            model = AssetAnalytics(s_prices)
-            vol_calc = model.volatility_annualized(min(252, len(s_prices)))
+            model = AssetAnalytics(asset_id, info, s_prices)
+            vol_calc = model.vol(days=252)
             if pd.notna(vol_calc) and vol_calc > 0:
-                vol = float(vol_calc)
+                vol = float(vol_calc) / 100.0
+        elif pd.notna(info.get('vol_3y')) and float(info.get('vol_3y', 0)) > 0:
+            raw_v = float(info['vol_3y'])
+            vol = raw_v / 100.0 if raw_v > 1.0 else raw_v
     elif pd.notna(info.get('vol_3y')) and float(info.get('vol_3y', 0)) > 0:
-        vol = float(info['vol_3y'])
+        raw_v = float(info['vol_3y'])
+        vol = raw_v / 100.0 if raw_v > 1.0 else raw_v
 
     # 3. Rendement de dividende naturel réinvesti
     div_yield = 0.035
     if pd.notna(info.get('dividend_yield')) and float(info.get('dividend_yield', 0)) > 0:
-        div_yield = float(info['dividend_yield'])
+        raw_div = float(info['dividend_yield'])
+        div_yield = raw_div / 100.0 if raw_div > 1.0 else raw_div
 
     # 4. Décrément annuel
-    dec_val, dec_type = extract_decrement(name, isin)
+    dec_val, dec_type = extract_decrement(name)
     dec_pts = 50.0
     if dec_val is not None:
         if dec_type == "PERCENT":
-            dec_pts = (dec_val / 100.0) * s0
+            dec_pts = (float(dec_val) / 100.0) * s0
         else:
             dec_pts = float(dec_val)
     else:
@@ -152,13 +157,13 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                     c1, c2, c3, c4 = st.columns(4)
                     with c1:
-                        s0 = st.number_input(f"Niveau Initial S0 (pts)", value=float(db_params['s0']), step=10.0, format="%.2f", key=f"st_s0_{i}")
+                        s0 = st.number_input(f"Niveau Initial S0 (pts)", value=float(db_params['s0']), step=10.0, format="%.2f", key=f"st_s0_{i}_{asset_id}")
                     with c2:
-                        dec = st.number_input(f"Décrément Annuel D (pts)", value=float(db_params['dec_pts']), step=5.0, format="%.2f", key=f"st_dec_{i}")
+                        dec = st.number_input(f"Décrément Annuel D (pts)", value=float(db_params['dec_pts']), step=5.0, format="%.2f", key=f"st_dec_{i}_{asset_id}")
                     with c3:
-                        vol = st.number_input(f"Volatilité Annuelle (%)", value=float(db_params['vol'] * 100.0), step=1.0, format="%.2f", key=f"st_vol_{i}")
+                        vol = st.number_input(f"Volatilité Annuelle (%)", value=float(db_params['vol'] * 100.0), step=1.0, format="%.2f", key=f"st_vol_{i}_{asset_id}")
                     with c4:
-                        yi = st.number_input(f"Dividende Réinvesti (%)", value=float(db_params['div_yield'] * 100.0), step=0.25, format="%.2f", key=f"st_yi_{i}")
+                        yi = st.number_input(f"Dividende Réinvesti (%)", value=float(db_params['div_yield'] * 100.0), step=0.25, format="%.2f", key=f"st_yi_{i}_{asset_id}")
 
                     nom_final = db_params['nom']
                 else:
@@ -177,12 +182,18 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                     nom_final = nom_input
 
+                # S'assurer d'un nom unique pour la matrice de résultats
+                nom_affiche = nom_final
+                existing_names = [idx.nom for idx in liste_indices]
+                if nom_affiche in existing_names:
+                    nom_affiche = f"{nom_affiche} ({i+1})"
+
                 liste_indices.append(DecrementIndex(
                     niveau_initial=float(s0),
                     decrement_annuel=float(dec),
                     vol=float(vol) / 100.0,
                     dividend_yield=float(yi) / 100.0,
-                    nom=nom_final
+                    nom=nom_affiche
                 ))
 
     # -------------------------------------------------------------------------

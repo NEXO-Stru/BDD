@@ -368,6 +368,8 @@ class AssetAnalytics:
         if ytd:
             end_prev_year = pd.Timestamp(year=self.current_date.year - 1, month=12, day=31)
             sub_rets = self.daily_returns[self.daily_returns.index > end_prev_year]
+        elif days == 252:
+            sub_rets = self.daily_returns.tail(252)
         else:
             sub_rets = self.daily_returns[self.daily_returns.index >= (self.current_date - pd.Timedelta(days=days))]
         if len(sub_rets) < 2:
@@ -455,7 +457,7 @@ class DecrementAnalytics(AssetAnalytics):
                 self.dec_yield_pct = self.dec_yield * 100.0
 
     @staticmethod
-    def extract_decrement(name: str):
+    def extract_decrement(name: str, *args, **kwargs):
         """Parse le nom d'un actif pour identifier un décrément en points ou %."""
         if not name or not isinstance(name, str):
             return None, None
@@ -567,7 +569,7 @@ class DecrementAnalytics(AssetAnalytics):
 
     def to_stress_test_payload(self) -> dict:
         """Prépare la charge utile pour alimentation directe de monte_carlo_2.py."""
-        vol_val = self.vol(days=365)
+        vol_val = self.vol(days=252)
         return {
             'niveau_initial': self.current_price,
             'decrement_annuel': self.dec_val if self.dec_val else 0.0,
