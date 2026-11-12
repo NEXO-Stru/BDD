@@ -33,9 +33,12 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
     elif pd.notna(info.get('last_price')) and float(info.get('last_price', 0)) > 0:
         s0 = float(info['last_price'])
 
-    # 2. Volatilité annualisée
+    # 2. Volatilité annualisée (priorité à la volatilité implicite si disponible)
     vol = 0.20
-    if asset_id in prices_pivot.columns:
+    if pd.notna(info.get('implied_vol')) and float(info.get('implied_vol', 0)) > 0:
+        raw_v = float(info['implied_vol'])
+        vol = raw_v / 100.0 if raw_v > 1.0 else raw_v
+    elif asset_id in prices_pivot.columns:
         s_prices = prices_pivot[asset_id].dropna()
         if len(s_prices) >= 20:
             model = AssetAnalytics(asset_id, info, s_prices)

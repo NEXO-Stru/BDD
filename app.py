@@ -312,6 +312,7 @@ if selected_nav == "Univers d'Investissement":
         "Perf 2A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 3M (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
+        "Vol Implicite (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Max DD 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 50 (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 200 (%)": st.column_config.NumberColumn(format="%.2f %%")
@@ -496,6 +497,13 @@ elif selected_nav == "Fiche Détaillée Actif":
             else:
                 curr_price_str = "N/A"
             
+            impl_val = asset_info.get('implied_vol')
+            impl_mat = asset_info.get('implied_vol_mat', 'DEC26')
+            if pd.isna(impl_mat) or not str(impl_mat).strip():
+                impl_mat = "DEC26"
+            impl_date = asset_info.get('implied_vol_date')
+            impl_date_str = f" au {pd.to_datetime(impl_date).strftime('%d/%m/%Y')}" if (pd.notna(impl_date) and impl_date is not None) else ""
+
             if dec_val is not None:
                 dec_val_pct = f"{dec_yield_pct:.2f}%".replace('.', ',') if dec_yield_pct != "N/A" else "N/A"
                 table_rows = (
@@ -504,15 +512,27 @@ elif selected_nav == "Fiche Détaillée Actif":
                     f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de décrément au {date_str}</td>"
                     f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{dec_val_pct}</td></tr>\n"
                     f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025 avec effet de réinvestissement</td>"
-                    f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>"
+                    f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>\n"
                 )
+                if pd.notna(impl_val) and float(impl_val) > 0:
+                    impl_str = f"{float(impl_val):.2f}%".replace('.', ',')
+                    table_rows += (
+                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite ({impl_mat}){impl_date_str}</td>"
+                        f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{impl_str}</td></tr>\n"
+                    )
             else:
                 table_rows = (
                     f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Niveau de l'indice au {date_str}</td>"
                     f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{curr_price_str}</td></tr>\n"
                     f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Taux de dividende 2025</td>"
-                    f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>"
+                    f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{div_val_pct}</td></tr>\n"
                 )
+                if pd.notna(impl_val) and float(impl_val) > 0:
+                    impl_str = f"{float(impl_val):.2f}%".replace('.', ',')
+                    table_rows += (
+                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite ({impl_mat}){impl_date_str}</td>"
+                        f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{impl_str}</td></tr>\n"
+                    )
                 
             st.markdown(f"""
 <table style="width:100%; font-family:sans-serif; font-size:13px; margin-bottom: 25px; border-collapse: collapse; border: none;">
@@ -653,6 +673,21 @@ elif selected_nav == "Fiche Détaillée Actif":
                     if len(ret_a) < 2: return np.nan
                     return ret_a.corr(ret_b) * 100
 
+                impl_bench_row = ""
+                impl_single_row = ""
+                if pd.notna(impl_val) and float(impl_val) > 0:
+                    impl_disp_str = fmt(float(impl_val), True)
+                    impl_bench_row = f"""
+    <tr>
+        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité<br>implicite ({impl_mat})</td>
+        <td colspan="6" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
+    </tr>"""
+                    impl_single_row = f"""
+    <tr>
+        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité<br>implicite ({impl_mat})</td>
+        <td colspan="3" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
+    </tr>"""
+
                 if benchmark_prices is not None:
                     bench_perfs = [get_bench_perf_ann(365*10), get_bench_perf_ann(365*5), get_bench_perf_ann(365)]
                     bench_vols = [get_bench_vol(365*10), get_bench_vol(365*5), get_bench_vol(365)]
@@ -694,7 +729,7 @@ elif selected_nav == "Fiche Détaillée Actif":
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(bench_vols[1], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(vols[2], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(bench_vols[2], True)}</td>
-    </tr>
+    </tr>{impl_bench_row}
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Sharpe Ratio</td>
         <td style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(sharpes[0])}</td>
@@ -747,7 +782,7 @@ elif selected_nav == "Fiche Détaillée Actif":
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[0], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[1], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[2], True)}</td>
-    </tr>
+    </tr>{impl_single_row}
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Sharpe Ratio</td>
         <td style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white;">{fmt(sharpes[0])}</td>
@@ -833,6 +868,8 @@ elif selected_nav == "Fiche Détaillée Actif":
                         "YTD": asset_model.vol(ytd=True) if has_prices else np.nan,
                         "1 An": asset_model.vol(days=365) if has_prices else np.nan,
                     }
+                    if pd.notna(impl_val) and float(impl_val) > 0:
+                        vol_data_exp[f"Implicite ({impl_mat})"] = float(impl_val)
                     beta_data_exp = {
                         "1 An": asset_model.beta(days=365) if has_prices else np.nan,
                         "3 Ans": asset_model.beta(days=365*3) if has_prices else np.nan,
@@ -878,6 +915,8 @@ elif selected_nav == "Fiche Détaillée Actif":
                 "YTD": asset_model.vol(ytd=True),
                 "1 An": asset_model.vol(days=365),
             }
+            if pd.notna(impl_val) and float(impl_val) > 0:
+                vol_data[f"Implicite ({impl_mat})"] = float(impl_val)
             
             beta_data = {
                 "1 An": asset_model.beta(days=365),
@@ -1203,11 +1242,20 @@ elif selected_nav == "Comparaison Multi-Actifs":
                         vol_pct = float(rets.std() * np.sqrt(252) * 100.0) if len(rets) > 1 else np.nan
                         cummax = p_series.cummax()
                         dd_pct = float(((p_series - cummax) / cummax).min() * 100.0) if len(p_series) > 0 else np.nan
+                        # Volatilité Implicite si disponible en base
+                        a_row = assets_df[assets_df['asset_id'] == aid]
+                        impl_val_comp = np.nan
+                        if not a_row.empty and 'implied_vol' in a_row.columns:
+                            iv = a_row['implied_vol'].iloc[0]
+                            if pd.notna(iv) and float(iv) > 0:
+                                impl_val_comp = float(iv)
+
                         summary_rows.append({
                             "Actif": name_disp,
                             "Dernier Cours": last_p,
                             "Performance Période": perf_pct,
                             "Volatilité Ann.": vol_pct,
+                            "Vol. Implicite": impl_val_comp,
                             "Max Drawdown": dd_pct
                         })
                     summary_df = pd.DataFrame(summary_rows)
@@ -1217,6 +1265,7 @@ elif selected_nav == "Comparaison Multi-Actifs":
                             'Dernier Cours': "{:.2f}",
                             'Performance Période': "{:+.2f} %",
                             'Volatilité Ann.': "{:.2f} %",
+                            'Vol. Implicite': "{:.2f} %",
                             'Max Drawdown': "{:.2f} %"
                         }, na_rep="N/A"),
                         use_container_width=True,

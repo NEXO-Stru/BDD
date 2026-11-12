@@ -112,6 +112,24 @@ class UniverseRepository:
             df['sector'] = df['sector'].astype(str).str.strip()
             df.loc[df['sector'].str.contains('multi', case=False, na=False), 'sector'] = 'Multi-secteurs'
             df.loc[df['sector'].str.contains('diversifi', case=False, na=False), 'sector'] = 'Multi-secteurs'
+
+            # Récupération automatique des dernières volatilités implicites si la table existe
+            try:
+                query_vol = """
+                    SELECT DISTINCT ON (asset_id) 
+                        asset_id, 
+                        vol_value AS implied_vol, 
+                        maturity AS implied_vol_mat, 
+                        date AS implied_vol_date
+                    FROM implied_volatility
+                    ORDER BY asset_id, date DESC
+                """
+                df_vols = pd.read_sql(query_vol, conn)
+                if not df_vols.empty:
+                    df = df.merge(df_vols, on='asset_id', how='left')
+            except Exception:
+                pass
+
             self.assets_df = df
             return df
 
@@ -239,6 +257,7 @@ class ScreenerEngine:
         'perf_2y': 'Perf 2A (%)',
         'vol_3m': 'Vol 3M (%)',
         'vol_1y': 'Vol 1A (%)',
+        'implied_vol': 'Vol Implicite (%)',
         'max_dd_1y': 'Max DD 1A (%)',
         'dist_sma50': 'Écart SMA 50 (%)',
         'dist_sma200': 'Écart SMA 200 (%)'
