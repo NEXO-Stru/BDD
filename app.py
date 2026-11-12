@@ -313,6 +313,8 @@ if selected_nav == "Univers d'Investissement":
         "Vol 3M (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol Implicite (%)": st.column_config.NumberColumn(format="%.2f %%"),
+        "Maturité Vol Impli": st.column_config.TextColumn(),
+        "Date Vol Impli": st.column_config.TextColumn(),
         "Max DD 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 50 (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 200 (%)": st.column_config.NumberColumn(format="%.2f %%")
@@ -502,7 +504,13 @@ elif selected_nav == "Fiche Détaillée Actif":
             if pd.isna(impl_mat) or not str(impl_mat).strip():
                 impl_mat = "DEC26"
             impl_date = asset_info.get('implied_vol_date')
-            impl_date_str = f" au {pd.to_datetime(impl_date).strftime('%d/%m/%Y')}" if (pd.notna(impl_date) and impl_date is not None) else ""
+            impl_date_fmt = ""
+            if pd.notna(impl_date) and str(impl_date).strip():
+                try:
+                    impl_date_fmt = pd.to_datetime(impl_date).strftime('%d/%m/%Y')
+                except Exception:
+                    impl_date_fmt = str(impl_date).strip()
+            impl_date_str = f" au {impl_date_fmt}" if impl_date_fmt else ""
 
             if dec_val is not None:
                 dec_val_pct = f"{dec_yield_pct:.2f}%".replace('.', ',') if dec_yield_pct != "N/A" else "N/A"
@@ -517,7 +525,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                 if pd.notna(impl_val) and float(impl_val) > 0:
                     impl_str = f"{float(impl_val):.2f}%".replace('.', ',')
                     table_rows += (
-                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite ({impl_mat}){impl_date_str}</td>"
+                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite Put ATM ({impl_mat}){impl_date_str}</td>"
                         f"<td style='background-color:#f4f5f7; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{impl_str}</td></tr>\n"
                     )
             else:
@@ -530,7 +538,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                 if pd.notna(impl_val) and float(impl_val) > 0:
                     impl_str = f"{float(impl_val):.2f}%".replace('.', ',')
                     table_rows += (
-                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite ({impl_mat}){impl_date_str}</td>"
+                        f"<tr><td style='background-color:#143F6A; color:white; padding:10px; font-weight:bold; border: 1px solid white;'>Volatilité Implicite Put ATM ({impl_mat}){impl_date_str}</td>"
                         f"<td style='background-color:#e6e9ed; color:black; padding:10px; text-align:center; font-weight:bold; border: 1px solid white;'>{impl_str}</td></tr>\n"
                     )
                 
@@ -677,14 +685,15 @@ elif selected_nav == "Fiche Détaillée Actif":
                 impl_single_row = ""
                 if pd.notna(impl_val) and float(impl_val) > 0:
                     impl_disp_str = fmt(float(impl_val), True)
+                    impl_info_tag = f"<br><span style='font-size:10px; font-weight:normal; color:#555;'>({impl_mat} au {impl_date_fmt})</span>" if impl_date_fmt else f"<br><span style='font-size:10px; font-weight:normal; color:#555;'>({impl_mat})</span>"
                     impl_bench_row = f"""
     <tr>
-        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité<br>implicite ({impl_mat})</td>
+        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité implicite{impl_info_tag}</td>
         <td colspan="6" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
     </tr>"""
                     impl_single_row = f"""
     <tr>
-        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité<br>implicite ({impl_mat})</td>
+        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité implicite{impl_info_tag}</td>
         <td colspan="3" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
     </tr>"""
 
@@ -862,6 +871,17 @@ elif selected_nav == "Fiche Détaillée Actif":
                         "3 Mois": asset_model.perf(days=90) if has_prices else np.nan,
                         "YTD": asset_model.perf(ytd=True) if has_prices else np.nan,
                     }
+                    impl_val = asset_info.get('implied_vol')
+                    impl_mat = str(asset_info.get('implied_vol_mat', 'DEC26')).strip() if pd.notna(asset_info.get('implied_vol_mat')) else "DEC26"
+                    impl_date_raw = asset_info.get('implied_vol_date')
+                    impl_date_fmt = ""
+                    if pd.notna(impl_date_raw) and str(impl_date_raw).strip():
+                        try:
+                            impl_date_fmt = pd.to_datetime(impl_date_raw).strftime('%d/%m/%Y')
+                        except Exception:
+                            impl_date_fmt = str(impl_date_raw).strip()
+                    label_impl = f"Implicite ({impl_mat} - {impl_date_fmt})" if impl_date_fmt else f"Implicite ({impl_mat})"
+
                     vol_data_exp = {
                         "1 Mois": asset_model.vol(days=30) if has_prices else np.nan,
                         "3 Mois": asset_model.vol(days=90) if has_prices else np.nan,
@@ -869,7 +889,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                         "1 An": asset_model.vol(days=365) if has_prices else np.nan,
                     }
                     if pd.notna(impl_val) and float(impl_val) > 0:
-                        vol_data_exp[f"Implicite ({impl_mat})"] = float(impl_val)
+                        vol_data_exp[label_impl] = float(impl_val)
                     beta_data_exp = {
                         "1 An": asset_model.beta(days=365) if has_prices else np.nan,
                         "3 Ans": asset_model.beta(days=365*3) if has_prices else np.nan,
@@ -909,6 +929,17 @@ elif selected_nav == "Fiche Détaillée Actif":
                 "YTD": asset_model.perf(ytd=True),
             }
 
+            impl_val = asset_info.get('implied_vol')
+            impl_mat = str(asset_info.get('implied_vol_mat', 'DEC26')).strip() if pd.notna(asset_info.get('implied_vol_mat')) else "DEC26"
+            impl_date_raw = asset_info.get('implied_vol_date')
+            impl_date_fmt = ""
+            if pd.notna(impl_date_raw) and str(impl_date_raw).strip():
+                try:
+                    impl_date_fmt = pd.to_datetime(impl_date_raw).strftime('%d/%m/%Y')
+                except Exception:
+                    impl_date_fmt = str(impl_date_raw).strip()
+            label_impl = f"Implicite ({impl_mat} - {impl_date_fmt})" if impl_date_fmt else f"Implicite ({impl_mat})"
+
             vol_data = {
                 "1 Mois": asset_model.vol(days=30),
                 "3 Mois": asset_model.vol(days=90),
@@ -916,7 +947,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                 "1 An": asset_model.vol(days=365),
             }
             if pd.notna(impl_val) and float(impl_val) > 0:
-                vol_data[f"Implicite ({impl_mat})"] = float(impl_val)
+                vol_data[label_impl] = float(impl_val)
             
             beta_data = {
                 "1 An": asset_model.beta(days=365),
@@ -943,6 +974,10 @@ elif selected_nav == "Fiche Détaillée Actif":
                 beta_df = pd.DataFrame([beta_data]).T.reset_index()
                 beta_df.columns = ["Période", "Coefficient"]
                 st.dataframe(beta_df.style.format({"Coefficient": "{:.2f}"}, na_rep="N/A"), use_container_width=True, hide_index=True)
+
+            if pd.notna(impl_val) and float(impl_val) > 0:
+                date_note = f" au {impl_date_fmt}" if impl_date_fmt else ""
+                st.caption(f"Note : La volatilité implicite correspond au Put ATM de maturité {impl_mat}{date_note} (source Reuters/Bloomberg).")
 
             st.divider()
 
@@ -1245,10 +1280,24 @@ elif selected_nav == "Comparaison Multi-Actifs":
                         # Volatilité Implicite si disponible en base
                         a_row = assets_df[assets_df['asset_id'] == aid]
                         impl_val_comp = np.nan
-                        if not a_row.empty and 'implied_vol' in a_row.columns:
-                            iv = a_row['implied_vol'].iloc[0]
-                            if pd.notna(iv) and float(iv) > 0:
-                                impl_val_comp = float(iv)
+                        impl_mat_comp = "N/A"
+                        impl_date_comp = "N/A"
+                        if not a_row.empty:
+                            if 'implied_vol' in a_row.columns:
+                                iv = a_row['implied_vol'].iloc[0]
+                                if pd.notna(iv) and float(iv) > 0:
+                                    impl_val_comp = float(iv)
+                            if 'implied_vol_mat' in a_row.columns:
+                                im = a_row['implied_vol_mat'].iloc[0]
+                                if pd.notna(im) and str(im).strip():
+                                    impl_mat_comp = str(im).strip()
+                            if 'implied_vol_date' in a_row.columns:
+                                idt = a_row['implied_vol_date'].iloc[0]
+                                if pd.notna(idt) and str(idt).strip():
+                                    try:
+                                        impl_date_comp = pd.to_datetime(idt).strftime('%d/%m/%Y')
+                                    except Exception:
+                                        impl_date_comp = str(idt).strip()
 
                         summary_rows.append({
                             "Actif": name_disp,
@@ -1256,6 +1305,8 @@ elif selected_nav == "Comparaison Multi-Actifs":
                             "Performance Période": perf_pct,
                             "Volatilité Ann.": vol_pct,
                             "Vol. Implicite": impl_val_comp,
+                            "Maturité Vol Impli": impl_mat_comp if pd.notna(impl_val_comp) else "N/A",
+                            "Date Vol Impli": impl_date_comp if pd.notna(impl_val_comp) else "N/A",
                             "Max Drawdown": dd_pct
                         })
                     summary_df = pd.DataFrame(summary_rows)
@@ -1271,6 +1322,7 @@ elif selected_nav == "Comparaison Multi-Actifs":
                         use_container_width=True,
                         hide_index=True
                     )
+                    st.caption("Note : La volatilité implicite correspond à l'option Put ATM relevée en base (avec maturité et date de relevé associées).")
                     
                     st.divider()
                     st.markdown("<div class='section-title'>Comparaison des Volatilités (1 An Glissant)</div>", unsafe_allow_html=True)
