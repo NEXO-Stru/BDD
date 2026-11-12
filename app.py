@@ -267,7 +267,7 @@ if selected_nav == "Univers d'Investissement":
     columns_mapping = dict(ScreenerEngine.COLUMNS_MAPPING)
 
     # Détection dynamique de la date et maturité en base pour l'en-tête de colonne
-    vol_col_name = "Vol Impli 11/11 DEC26"
+    vol_col_name = "Vol Impli 11/11 PUT DEC26"
     if 'implied_vol' in df_filtered.columns:
         valid_vols = df_filtered[df_filtered['implied_vol'].notna()]
         if not valid_vols.empty:
@@ -280,9 +280,9 @@ if selected_nav == "Univers d'Investissement":
                 except Exception:
                     date_str = str(date_val)[:5]
             if date_str and mat_val:
-                vol_col_name = f"Vol Impli {date_str} {mat_val}"
+                vol_col_name = f"Vol Impli {date_str} PUT {mat_val}"
             elif mat_val:
-                vol_col_name = f"Vol Impli {mat_val}"
+                vol_col_name = f"Vol Impli PUT {mat_val}"
 
     columns_mapping['implied_vol'] = vol_col_name
     cols_to_keep = [c for c in columns_mapping.keys() if c in df_filtered.columns]
@@ -333,8 +333,6 @@ if selected_nav == "Univers d'Investissement":
         "Vol 3M (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         vol_col_name: st.column_config.NumberColumn(format="%.2f %%"),
-        "Maturité Vol Impli": st.column_config.TextColumn(),
-        "Date Vol Impli": st.column_config.TextColumn(),
         "Max DD 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 50 (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 200 (%)": st.column_config.NumberColumn(format="%.2f %%")
@@ -701,22 +699,6 @@ elif selected_nav == "Fiche Détaillée Actif":
                     if len(ret_a) < 2: return np.nan
                     return ret_a.corr(ret_b) * 100
 
-                impl_bench_row = ""
-                impl_single_row = ""
-                if pd.notna(impl_val) and float(impl_val) > 0:
-                    impl_disp_str = fmt(float(impl_val), True)
-                    impl_info_tag = f"<br><span style='font-size:10px; font-weight:normal; color:#555;'>({impl_mat} au {impl_date_fmt})</span>" if impl_date_fmt else f"<br><span style='font-size:10px; font-weight:normal; color:#555;'>({impl_mat})</span>"
-                    impl_bench_row = f"""
-    <tr>
-        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité implicite{impl_info_tag}</td>
-        <td colspan="6" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
-    </tr>"""
-                    impl_single_row = f"""
-    <tr>
-        <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Volatilité implicite{impl_info_tag}</td>
-        <td colspan="3" style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{impl_disp_str}</td>
-    </tr>"""
-
                 if benchmark_prices is not None:
                     bench_perfs = [get_bench_perf_ann(365*10), get_bench_perf_ann(365*5), get_bench_perf_ann(365)]
                     bench_vols = [get_bench_vol(365*10), get_bench_vol(365*5), get_bench_vol(365)]
@@ -758,7 +740,7 @@ elif selected_nav == "Fiche Détaillée Actif":
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(bench_vols[1], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(vols[2], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(bench_vols[2], True)}</td>
-    </tr>{impl_bench_row}
+    </tr>
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Sharpe Ratio</td>
         <td style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white; font-weight:bold;">{fmt(sharpes[0])}</td>
@@ -811,7 +793,7 @@ elif selected_nav == "Fiche Détaillée Actif":
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[0], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[1], True)}</td>
         <td style="background-color:#f4f5f7; color:black; padding:6px; border: 1px solid white;">{fmt(vols[2], True)}</td>
-    </tr>{impl_single_row}
+    </tr>
     <tr>
         <td style="background-color:#e6e9ed; color:black; font-weight:bold; padding:6px; border: 1px solid white; text-align:left;">Sharpe Ratio</td>
         <td style="background-color:#e6e9ed; color:black; padding:6px; border: 1px solid white;">{fmt(sharpes[0])}</td>
@@ -1020,7 +1002,7 @@ elif selected_nav == "Fiche Détaillée Actif":
                     first_common = common_dates[0]
                     bench_sub = bench_prices[bench_prices.index >= first_common]
                     bench_norm = (bench_sub / bench_prices.loc[first_common]) * asset_prices.loc[first_common]
-                    
+                    # 
                     fig.add_trace(go.Scatter(
                         x=bench_norm.index, y=bench_norm, mode='lines', 
                         name=f'Benchmark ({benchmark_ticker})', 
@@ -1287,6 +1269,23 @@ elif selected_nav == "Comparaison Multi-Actifs":
                     
                     # Tableau synthétique côte à côte des actifs
                     st.markdown(f"**Synthèse des performances et risques depuis le point commun ({common_start_date.strftime('%d/%m/%Y')})**")
+
+                    vol_col_comp = "Vol Impli 11/11 PUT DEC26"
+                    valid_vols = assets_df[assets_df['implied_vol'].notna()] if 'implied_vol' in assets_df.columns else pd.DataFrame()
+                    if not valid_vols.empty:
+                        mat_val = str(valid_vols['implied_vol_mat'].dropna().iloc[0]).strip() if 'implied_vol_mat' in valid_vols.columns else ""
+                        date_val = valid_vols['implied_vol_date'].dropna().iloc[0] if 'implied_vol_date' in valid_vols.columns else ""
+                        date_str = ""
+                        if date_val:
+                            try:
+                                date_str = pd.to_datetime(date_val, dayfirst=True).strftime('%d/%m')
+                            except Exception:
+                                date_str = str(date_val)[:5]
+                        if date_str and mat_val:
+                            vol_col_comp = f"Vol Impli {date_str} PUT {mat_val}"
+                        elif mat_val:
+                            vol_col_comp = f"Vol Impli PUT {mat_val}"
+
                     summary_rows = []
                     for aid in valid_ids:
                         name_disp = [k for k, v in asset_options.items() if v == aid][0]
@@ -1297,36 +1296,21 @@ elif selected_nav == "Comparaison Multi-Actifs":
                         vol_pct = float(rets.std() * np.sqrt(252) * 100.0) if len(rets) > 1 else np.nan
                         cummax = p_series.cummax()
                         dd_pct = float(((p_series - cummax) / cummax).min() * 100.0) if len(p_series) > 0 else np.nan
+
                         # Volatilité Implicite si disponible en base
                         a_row = assets_df[assets_df['asset_id'] == aid]
                         impl_val_comp = np.nan
-                        impl_mat_comp = "N/A"
-                        impl_date_comp = "N/A"
-                        if not a_row.empty:
-                            if 'implied_vol' in a_row.columns:
-                                iv = a_row['implied_vol'].iloc[0]
-                                if pd.notna(iv) and float(iv) > 0:
-                                    impl_val_comp = float(iv)
-                            if 'implied_vol_mat' in a_row.columns:
-                                im = a_row['implied_vol_mat'].iloc[0]
-                                if pd.notna(im) and str(im).strip():
-                                    impl_mat_comp = str(im).strip()
-                            if 'implied_vol_date' in a_row.columns:
-                                idt = a_row['implied_vol_date'].iloc[0]
-                                if pd.notna(idt) and str(idt).strip():
-                                    try:
-                                        impl_date_comp = pd.to_datetime(idt).strftime('%d/%m/%Y')
-                                    except Exception:
-                                        impl_date_comp = str(idt).strip()
+                        if not a_row.empty and 'implied_vol' in a_row.columns:
+                            iv = a_row['implied_vol'].iloc[0]
+                            if pd.notna(iv) and float(iv) > 0:
+                                impl_val_comp = float(iv)
 
                         summary_rows.append({
                             "Actif": name_disp,
                             "Dernier Cours": last_p,
                             "Performance Période": perf_pct,
                             "Volatilité Ann.": vol_pct,
-                            "Vol. Implicite": impl_val_comp,
-                            "Maturité Vol Impli": impl_mat_comp if pd.notna(impl_val_comp) else "N/A",
-                            "Date Vol Impli": impl_date_comp if pd.notna(impl_val_comp) else "N/A",
+                            vol_col_comp: impl_val_comp,
                             "Max Drawdown": dd_pct
                         })
                     summary_df = pd.DataFrame(summary_rows)
@@ -1336,13 +1320,12 @@ elif selected_nav == "Comparaison Multi-Actifs":
                             'Dernier Cours': "{:.2f}",
                             'Performance Période': "{:+.2f} %",
                             'Volatilité Ann.': "{:.2f} %",
-                            'Vol. Implicite': "{:.2f} %",
+                            vol_col_comp: "{:.2f} %",
                             'Max Drawdown': "{:.2f} %"
                         }, na_rep="N/A"),
                         use_container_width=True,
                         hide_index=True
                     )
-                    st.caption("Note : La volatilité implicite correspond à l'option Put ATM relevée en base (avec maturité et date de relevé associées).")
                     
                     st.divider()
                     st.markdown("<div class='section-title'>Comparaison des Volatilités (1 An Glissant)</div>", unsafe_allow_html=True)

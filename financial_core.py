@@ -258,9 +258,7 @@ class ScreenerEngine:
         'perf_2y': 'Perf 2A (%)',
         'vol_3m': 'Vol 3M (%)',
         'vol_1y': 'Vol 1A (%)',
-        'implied_vol': 'Vol Impli 11/11 DEC26',
-        'implied_vol_mat': 'Maturité Vol Impli',
-        'implied_vol_date': 'Date Vol Impli',
+        'implied_vol': 'Vol Impli 11/11 PUT DEC26',
         'max_dd_1y': 'Max DD 1A (%)',
         'dist_sma50': 'Écart SMA 50 (%)',
         'dist_sma200': 'Écart SMA 200 (%)'
