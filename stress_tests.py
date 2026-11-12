@@ -71,6 +71,15 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
 
     disp_name = f"{name} ({ticker})" if (ticker and ticker != 'nan') else name
 
+    is_implied_vol = bool(pd.notna(info.get('implied_vol')) and float(info.get('implied_vol', 0)) > 0)
+    impl_mat = str(info.get('implied_vol_mat', 'DEC26')).strip() if is_implied_vol else ""
+    impl_date = ""
+    if is_implied_vol and pd.notna(info.get('implied_vol_date')):
+        try:
+            impl_date = pd.to_datetime(info['implied_vol_date']).strftime('%d/%m/%Y')
+        except Exception:
+            impl_date = str(info['implied_vol_date']).strip()
+
     return {
         'nom': disp_name,
         's0': s0,
@@ -78,7 +87,10 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
         'div_yield': div_yield,
         'dec_pts': dec_pts,
         'dec_val_raw': dec_val,
-        'dec_type': dec_type
+        'dec_type': dec_type,
+        'is_implied_vol': is_implied_vol,
+        'impl_mat': impl_mat,
+        'impl_date': impl_date
     }
 
 
@@ -167,6 +179,10 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                         vol = st.number_input(f"Volatilité Annuelle (%)", value=float(db_params['vol'] * 100.0), step=1.0, format="%.2f", key=f"st_vol_{i}_{asset_id}")
                     with c4:
                         yi = st.number_input(f"Dividende Réinvesti (%)", value=float(db_params['div_yield'] * 100.0), step=0.25, format="%.2f", key=f"st_yi_{i}_{asset_id}")
+
+                    if db_params.get('is_implied_vol'):
+                        dt_note = f" au {db_params['impl_date']}" if db_params.get('impl_date') else ""
+                        st.caption(f"Volatilité issue du marché des options (Put ATM {db_params['impl_mat']}{dt_note}).")
 
                     nom_final = db_params['nom']
                 else:

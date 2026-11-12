@@ -127,6 +127,7 @@ class UniverseRepository:
                 df_vols = pd.read_sql(query_vol, conn)
                 if not df_vols.empty:
                     df = df.merge(df_vols, on='asset_id', how='left')
+                    df['implied_vol_date'] = pd.to_datetime(df['implied_vol_date']).dt.strftime('%d/%m/%Y')
             except Exception:
                 pass
 
@@ -257,7 +258,9 @@ class ScreenerEngine:
         'perf_2y': 'Perf 2A (%)',
         'vol_3m': 'Vol 3M (%)',
         'vol_1y': 'Vol 1A (%)',
-        'implied_vol': 'Vol Implicite (%)',
+        'implied_vol': 'Vol Impli 11/11 DEC26',
+        'implied_vol_mat': 'Maturité Vol Impli',
+        'implied_vol_date': 'Date Vol Impli',
         'max_dd_1y': 'Max DD 1A (%)',
         'dist_sma50': 'Écart SMA 50 (%)',
         'dist_sma200': 'Écart SMA 200 (%)'

@@ -264,7 +264,27 @@ if selected_nav == "Univers d'Investissement":
     )
 
     # Sélection et renommage des colonnes épurées
-    columns_mapping = ScreenerEngine.COLUMNS_MAPPING
+    columns_mapping = dict(ScreenerEngine.COLUMNS_MAPPING)
+
+    # Détection dynamique de la date et maturité en base pour l'en-tête de colonne
+    vol_col_name = "Vol Impli 11/11 DEC26"
+    if 'implied_vol' in df_filtered.columns:
+        valid_vols = df_filtered[df_filtered['implied_vol'].notna()]
+        if not valid_vols.empty:
+            mat_val = str(valid_vols['implied_vol_mat'].dropna().iloc[0]).strip() if 'implied_vol_mat' in valid_vols.columns else ""
+            date_val = valid_vols['implied_vol_date'].dropna().iloc[0] if 'implied_vol_date' in valid_vols.columns else ""
+            date_str = ""
+            if date_val:
+                try:
+                    date_str = pd.to_datetime(date_val, dayfirst=True).strftime('%d/%m')
+                except Exception:
+                    date_str = str(date_val)[:5]
+            if date_str and mat_val:
+                vol_col_name = f"Vol Impli {date_str} {mat_val}"
+            elif mat_val:
+                vol_col_name = f"Vol Impli {mat_val}"
+
+    columns_mapping['implied_vol'] = vol_col_name
     cols_to_keep = [c for c in columns_mapping.keys() if c in df_filtered.columns]
     table_display = df_filtered[cols_to_keep].rename(columns=columns_mapping)
 
@@ -312,7 +332,7 @@ if selected_nav == "Univers d'Investissement":
         "Perf 2A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 3M (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
-        "Vol Implicite (%)": st.column_config.NumberColumn(format="%.2f %%"),
+        vol_col_name: st.column_config.NumberColumn(format="%.2f %%"),
         "Maturité Vol Impli": st.column_config.TextColumn(),
         "Date Vol Impli": st.column_config.TextColumn(),
         "Max DD 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
