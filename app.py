@@ -206,7 +206,8 @@ nav_options = [
     "Univers d'Investissement",
     "Fiche Détaillée Actif",
     "Comparaison Multi-Actifs",
-    "Stress Tests & Pricing"
+    "Stress Tests & Pricing",
+    "Backtest Historique"
 ]
 
 selected_nav = st.sidebar.radio(
@@ -1601,3 +1602,10 @@ elif selected_nav == "Comparaison Multi-Actifs":
 elif selected_nav == "Stress Tests & Pricing":
     from stress_tests import render_stress_tests_view
     render_stress_tests_view(repo, assets_df, prices_pivot)
+
+# ==============================================================================
+# MODULE 5 : BACKTEST HISTORIQUE PRODUITS STRUCTURÉS
+# ==============================================================================
+elif selected_nav == "Backtest Historique":
+    from backtest_view import render_backtest_view
+    render_backtest_view(repo, assets_df, prices_pivot)
