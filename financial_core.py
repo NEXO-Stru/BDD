@@ -131,6 +131,23 @@ class UniverseRepository:
             except Exception:
                 pass
 
+            # Récupération automatique des derniers prix de put (5Y 60%) si la table existe
+            try:
+                query_put = """
+                    SELECT DISTINCT ON (asset_id) 
+                        asset_id, 
+                        put_price AS put_price_5y_60, 
+                        date AS put_price_date
+                    FROM put_price
+                    ORDER BY asset_id, date DESC
+                """
+                df_puts = pd.read_sql(query_put, conn)
+                if not df_puts.empty:
+                    df = df.merge(df_puts, on='asset_id', how='left')
+                    df['put_price_date'] = pd.to_datetime(df['put_price_date']).dt.strftime('%d/%m/%Y')
+            except Exception:
+                pass
+
             self.assets_df = df
             return df
 
@@ -237,6 +254,25 @@ class UniverseRepository:
 
         return df
 
+    def get_put_price_history(self, asset_id: int) -> pd.DataFrame:
+        """Récupère l'historique temporel des prix de put 5Y 60% pour un actif donné."""
+        if self.engine is None or not asset_id:
+            return pd.DataFrame()
+        try:
+            with self.engine.connect() as conn:
+                query = f"""
+                    SELECT date, put_price 
+                    FROM put_price 
+                    WHERE asset_id = {int(asset_id)} 
+                    ORDER BY date ASC
+                """
+                df = pd.read_sql(query, conn)
+                if not df.empty:
+                    df['date'] = pd.to_datetime(df['date'])
+                return df
+        except Exception:
+            return pd.DataFrame()
+
 
 # ==============================================================================
 # 2. COUCHE QUANTITATIVE : ScreenerEngine
@@ -259,6 +295,7 @@ class ScreenerEngine:
         'vol_3m': 'Vol 3M (%)',
         'vol_1y': 'Vol 1A (%)',
         'implied_vol': 'Vol Impli 11/11 PUT DEC26',
+        'put_price_5y_60': 'Put 5A 60% (%)',
         'max_dd_1y': 'Max DD 1A (%)',
         'dist_sma50': 'Écart SMA 50 (%)',
         'dist_sma200': 'Écart SMA 200 (%)'

@@ -286,6 +286,21 @@ if selected_nav == "Univers d'Investissement":
                 vol_col_name = f"Vol Impli PUT {mat_val}"
 
     columns_mapping['implied_vol'] = vol_col_name
+
+    # Détection dynamique de la date de relevé pour le prix de Put 5Y 60%
+    put_col_name = "Put 5A 60% (%)"
+    if 'put_price_5y_60' in df_filtered.columns:
+        valid_puts = df_filtered[df_filtered['put_price_5y_60'].notna()]
+        if not valid_puts.empty:
+            p_date_val = valid_puts['put_price_date'].dropna().iloc[0] if 'put_price_date' in valid_puts.columns else ""
+            if p_date_val:
+                try:
+                    p_date_str = pd.to_datetime(p_date_val, dayfirst=True).strftime('%d/%m')
+                    put_col_name = f"Put 5A 60% ({p_date_str})"
+                except Exception:
+                    put_col_name = f"Put 5A 60% ({str(p_date_val)[:5]})"
+
+    columns_mapping['put_price_5y_60'] = put_col_name
     cols_to_keep = [c for c in columns_mapping.keys() if c in df_filtered.columns]
     table_display = df_filtered[cols_to_keep].rename(columns=columns_mapping)
 
@@ -334,6 +349,8 @@ if selected_nav == "Univers d'Investissement":
         "Vol 3M (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Vol 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         vol_col_name: st.column_config.NumberColumn(format="%.2f %%"),
+        put_col_name: st.column_config.NumberColumn(format="%.2f %%"),
+        "Put 5A 60% (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Max DD 1A (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 50 (%)": st.column_config.NumberColumn(format="%.2f %%"),
         "Écart SMA 200 (%)": st.column_config.NumberColumn(format="%.2f %%")
@@ -978,6 +995,16 @@ elif selected_nav == "Fiche Détaillée Actif":
                 beta_df.columns = ["Période", "Coefficient"]
                 st.dataframe(beta_df.style.format({"Coefficient": "{:.2f}"}, na_rep="N/A"), use_container_width=True, hide_index=True)
 
+                # Case Prix du Put 5A 60% (placée directement sous la case du Bêta)
+                put_val = asset_info.get('put_price_5y_60')
+                put_date = asset_info.get('put_price_date')
+                st.markdown("**Prix du Put (5A 60%)**")
+                if pd.notna(put_val) and float(put_val) > 0:
+                    lbl_date = f"Relevé du {put_date}" if pd.notna(put_date) and str(put_date).strip() else "Maturité 5 ans"
+                    st.metric(label=lbl_date, value=f"{float(put_val):.2f} %".replace('.', ','))
+                else:
+                    st.metric(label="Maturité 5 ans", value="N/A")
+
             if pd.notna(impl_val) and float(impl_val) > 0:
                 date_note = f" au {impl_date_fmt}" if impl_date_fmt else ""
                 st.caption(f"Note : La volatilité implicite correspond au Put ATM de maturité {impl_mat}{date_note} (source Reuters/Bloomberg).")
@@ -1057,6 +1084,32 @@ elif selected_nav == "Fiche Détaillée Actif":
                 yaxis=dict(gridcolor='#e6e9ed')
             )
             st.plotly_chart(fig_vol, use_container_width=True)
+
+            # Évolution Historique du Prix du Put (5 Ans - Strike 60%)
+            put_history_df = repo.get_put_price_history(selected_asset_id)
+            if not put_history_df.empty and len(put_history_df) > 0:
+                st.divider()
+                st.markdown("<div class='section-title'>Évolution du Prix de Put 5 Ans (Strike 60%)</div>", unsafe_allow_html=True)
+                fig_put = go.Figure()
+                fig_put.add_trace(go.Scatter(
+                    x=put_history_df['date'],
+                    y=put_history_df['put_price'],
+                    mode='lines+markers',
+                    name='Prix Put 5A 60%',
+                    line=dict(color='#143F6A', width=2),
+                    marker=dict(size=7, color='#ff512f')
+                ))
+                fig_put.update_layout(
+                    hovermode="x unified",
+                    height=320,
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    yaxis_title="Prix du Put (%)",
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    xaxis=dict(gridcolor='#e6e9ed', title="Date de relevé"),
+                    yaxis=dict(gridcolor='#e6e9ed', tickformat=".2f", ticksuffix=" %")
+                )
+                st.plotly_chart(fig_put, use_container_width=True)
 
     # --------------------------------------------------------------------------
     # SOUS-SECTION 3 : RELATIONS & CORRÉLATIONS
@@ -1306,12 +1359,20 @@ elif selected_nav == "Comparaison Multi-Actifs":
                             if pd.notna(iv) and float(iv) > 0:
                                 impl_val_comp = float(iv)
 
+                        # Prix du Put 5A 60% si disponible en base
+                        put_val_comp = np.nan
+                        if not a_row.empty and 'put_price_5y_60' in a_row.columns:
+                            pv = a_row['put_price_5y_60'].iloc[0]
+                            if pd.notna(pv) and float(pv) > 0:
+                                put_val_comp = float(pv)
+
                         summary_rows.append({
                             "Actif": name_disp,
                             "Dernier Cours": last_p,
                             "Performance Période": perf_pct,
                             "Volatilité Ann.": vol_pct,
                             vol_col_comp: impl_val_comp,
+                            "Put 5A 60% (%)": put_val_comp,
                             "Max Drawdown": dd_pct
                         })
                     summary_df = pd.DataFrame(summary_rows)
@@ -1322,6 +1383,7 @@ elif selected_nav == "Comparaison Multi-Actifs":
                             'Performance Période': "{:+.2f} %",
                             'Volatilité Ann.': "{:.2f} %",
                             vol_col_comp: "{:.2f} %",
+                            'Put 5A 60% (%)': "{:.2f} %",
                             'Max Drawdown': "{:.2f} %"
                         }, na_rep="N/A"),
                         use_container_width=True,
