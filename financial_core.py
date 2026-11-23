@@ -518,18 +518,34 @@ class DecrementAnalytics(AssetAnalytics):
         """Parse le nom d'un actif pour identifier un décrément en points ou %."""
         if not name or not isinstance(name, str):
             return None, None
-        m_pct = re.search(r'(\d+(?:[.,]\d+)?)\s*%', name)
-        if m_pct:
-            return float(m_pct.group(1).replace(',', '.')), 'PERCENT'
-        m_dnp = re.search(r'(?i)d\s*(\d+(?:[.,]\d+)?)\s*p', name)
-        if m_dnp:
-            return float(m_dnp.group(1).replace(',', '.')), 'POINTS'
-        m_dec = re.search(r'(?i)(?:decrement|decr?\.?)\s*(\d+(?:[.,]\d+)?)', name)
-        if m_dec:
-            return float(m_dec.group(1).replace(',', '.')), 'POINTS'
-        m_num = re.search(r'(?i)(\d+(?:[.,]\d+)?)\s*(?:points?|pts?|pt|point\(s\))?\s*decr?', name)
-        if m_num:
-            return float(m_num.group(1).replace(',', '.')), 'POINTS'
+
+        # 1. Décrément explicite en points (ex: "50 Points Decrement", "Decrement 50 pts", "D50P")
+        m1 = re.search(r'(?i)(\d+(?:[.,]\d+)?)\s*(?:points?|pts?|pt)\s*(?:decrement|decr?\.?)', name)
+        if m1:
+            return float(m1.group(1).replace(',', '.')), 'POINTS'
+        m2 = re.search(r'(?i)(?:decrement|decr?\.?)\s*(\d+(?:[.,]\d+)?)\s*(?:points?|pts?|pt)', name)
+        if m2:
+            return float(m2.group(1).replace(',', '.')), 'POINTS'
+        m3 = re.search(r'(?i)\bd\s*(\d+(?:[.,]\d+)?)\s*p\b', name)
+        if m3:
+            return float(m3.group(1).replace(',', '.')), 'POINTS'
+
+        # 2. Décrément explicite en pourcentage (ex: "Decrement 5%", "5% Decrement", "Dec 5%")
+        m4 = re.search(r'(?i)(?:decrement|decr?\.?)\s*(\d+(?:[.,]\d+)?)\s*%', name)
+        if m4:
+            return float(m4.group(1).replace(',', '.')), 'PERCENT'
+        m5 = re.search(r'(?i)(\d+(?:[.,]\d+)?)\s*%\s*(?:decrement|decr?\.?)', name)
+        if m5:
+            return float(m5.group(1).replace(',', '.')), 'PERCENT'
+
+        # 3. Mention de decrement avec nombre (ex: "Decrement 50", "50 Decrement")
+        m6 = re.search(r'(?i)(?:decrement|decr?\.?)\s*(\d+(?:[.,]\d+)?)', name)
+        if m6:
+            return float(m6.group(1).replace(',', '.')), 'POINTS'
+        m7 = re.search(r'(?i)(\d+(?:[.,]\d+)?)\s*(?:points?|pts?|pt|point\(s\))?\s*decr?', name)
+        if m7:
+            return float(m7.group(1).replace(',', '.')), 'POINTS'
+
         return None, None
 
     @staticmethod

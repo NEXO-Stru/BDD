@@ -60,14 +60,11 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
 
     # 4. Décrément annuel
     dec_val, dec_type = extract_decrement(name)
-    dec_pts = 50.0
+    dec_type = dec_type if dec_type in ("PERCENT", "POINTS") else "POINTS"
     if dec_val is not None:
-        if dec_type == "PERCENT":
-            dec_pts = (float(dec_val) / 100.0) * s0
-        else:
-            dec_pts = float(dec_val)
+        dec_amount = float(dec_val)
     else:
-        dec_pts = 0.0
+        dec_amount = 50.0 if dec_type == "POINTS" else 5.0
 
     disp_name = f"{name} ({ticker})" if (ticker and ticker != 'nan') else name
 
@@ -85,8 +82,7 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
         's0': s0,
         'vol': vol,
         'div_yield': div_yield,
-        'dec_pts': dec_pts,
-        'dec_val_raw': dec_val,
+        'dec_val': dec_amount,
         'dec_type': dec_type,
         'is_implied_vol': is_implied_vol,
         'impl_mat': impl_mat,
@@ -174,7 +170,16 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                     with c1:
                         s0 = st.number_input(f"Niveau Initial S0 (pts)", value=float(db_params['s0']), step=10.0, format="%.2f", key=f"st_s0_{i}_{asset_id}")
                     with c2:
-                        dec = st.number_input(f"Décrément Annuel D (pts)", value=float(db_params['dec_pts']), step=5.0, format="%.2f", key=f"st_dec_{i}_{asset_id}")
+                        sub_v, sub_u = st.columns([1.3, 1.0])
+                        with sub_u:
+                            type_opts = ["pts", "%"]
+                            def_u_idx = 1 if db_params['dec_type'] == "PERCENT" else 0
+                            dec_unit = st.selectbox("Unité", type_opts, index=def_u_idx, key=f"st_dectype_{i}_{asset_id}")
+                        with sub_v:
+                            is_pct = (dec_unit == "%")
+                            step_dec = 0.25 if is_pct else 5.0
+                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(db_params['dec_val']), step=step_dec, format="%.2f", key=f"st_dec_{i}_{asset_id}")
+                        dec_type_final = "PERCENT" if dec_unit == "%" else "POINTS"
                     with c3:
                         vol = st.number_input(f"Volatilité Annuelle (%)", value=float(db_params['vol'] * 100.0), step=1.0, format="%.2f", key=f"st_vol_{i}_{asset_id}")
                     with c4:
@@ -193,7 +198,16 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                     with c1:
                         s0 = st.number_input(f"Niveau Initial S0 (pts)", value=1000.0, step=100.0, format="%.1f", key=f"st_cust_s0_{i}")
                     with c2:
-                        dec = st.number_input(f"Décrément Annuel D (pts)", value=50.0 if i == 0 else 40.0, step=5.0, format="%.1f", key=f"st_cust_dec_{i}")
+                        sub_v, sub_u = st.columns([1.3, 1.0])
+                        with sub_u:
+                            type_opts = ["pts", "%"]
+                            dec_unit = st.selectbox("Unité", type_opts, index=0, key=f"st_cust_dectype_{i}")
+                        with sub_v:
+                            is_pct = (dec_unit == "%")
+                            def_val = 5.0 if is_pct else (50.0 if i == 0 else 40.0)
+                            step_dec = 0.25 if is_pct else 5.0
+                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(def_val), step=step_dec, format="%.2f", key=f"st_cust_dec_{i}")
+                        dec_type_final = "PERCENT" if dec_unit == "%" else "POINTS"
                     with c3:
                         vol = st.number_input(f"Volatilité Annuelle (%)", value=18.0 if i == 0 else 20.0, step=1.0, format="%.1f", key=f"st_cust_vol_{i}")
                     with c4:
@@ -210,6 +224,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 liste_indices.append(DecrementIndex(
                     niveau_initial=float(s0),
                     decrement_annuel=float(dec),
+                    decrement_type=dec_type_final,
                     vol=float(vol) / 100.0,
                     dividend_yield=float(yi) / 100.0,
                     nom=nom_affiche
@@ -285,10 +300,11 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                 data_macro = []
                 for nom_idx, d in results_multi.items():
+                    dec_unit_str = "%" if getattr(d['index'], 'decrement_type', 'POINTS') == "PERCENT" else "pts"
                     data_macro.append({
                         "Indice": nom_idx,
                         "Spot Initial S0": f"{d['index'].niveau_initial:.2f} pts",
-                        "Décrément Annuel": f"{d['index'].decrement_annuel:.2f} pts",
+                        "Décrément Annuel": f"{d['index'].decrement_annuel:.2f} {dec_unit_str}",
                         "Volatilité": f"{d['index'].vol*100:.1f} %",
                         "Dividende Réinvesti": f"{d['index'].dividend_yield*100:.2f} %",
                         "Niveau Final Décrément": f"{d['moy_dec']:.1f} pts ({d['moy_dec_pct']:+.1f} %)",
@@ -364,7 +380,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                     data_pricing.append({
                         "Indice": nom_idx,
                         "Taux d'Autocall Global": f"{d['pct_rappel_dec']:.1f} % (vs {d['pct_rappel_pr']:.1f} % PR)",
-                        "Espérance de Gain Annuelle": f"{d['moy_payoff_dec']:.2f} % (vs {d['moy_payoff_pr']:.2f} % PR)",
+                        "Payoff Moyen Actualisé (% nom.)": f"{d['moy_payoff_dec']:.2f} % (vs {d['moy_payoff_pr']:.2f} % PR)",
                         "Duration Espérée": f"{d['duration_dec']:.2f} ans (vs {d['duration_pr']:.2f} ans PR)",
                         "Probabilité sous PDI (Perte)": f"{d['pct_pdi_dec']:.2f} % (vs {d['pct_pdi_pr']:.2f} % PR)",
                         "Levier de Krach vs PR": lev_str

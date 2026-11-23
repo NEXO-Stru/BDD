@@ -40,14 +40,16 @@ class MarketScenario:
 class DecrementIndex:
     """Modélise spécifiquement la mécanique mathématique d'un indice Décrément et ses caractéristiques propres :
     - niveau initial (S0)
-    - décrément annuel fixe en points
+    - décrément annuel (en points ou en pourcentage)
+    - type de décrément ('POINTS' ou 'PERCENT')
     - volatilité propre (vol)
     - rendement de dividende réinvesti propre (dividend_yield)
     - nom / libellé
     """
-    def __init__(self, niveau_initial=1000.0, decrement_annuel=50.0, vol=0.18, dividend_yield=0.03, nom="Indice Décrément"):
+    def __init__(self, niveau_initial=1000.0, decrement_annuel=50.0, vol=0.18, dividend_yield=0.03, nom="Indice Décrément", decrement_type="POINTS"):
         self.niveau_initial = float(niveau_initial)
         self.decrement_annuel = float(decrement_annuel)
+        self.decrement_type = str(decrement_type).upper() if decrement_type else "POINTS"
         self.vol = vol
         self.dividend_yield = dividend_yield
         self.nom = str(nom)
@@ -58,8 +60,9 @@ class DecrementIndex:
         div_val = self.dividend_yield[0] if isinstance(self.dividend_yield, (list, tuple, np.ndarray)) else self.dividend_yield
         vol_str = f"{vol_val*100:.0f}%"
         div_str = f"{div_val*100:.1f}%"
+        dec_str = f"{self.decrement_annuel:.1f}%" if self.decrement_type == "PERCENT" else f"{self.decrement_annuel:.0f} pts"
         prefix = f"Indice {idx_num} " if idx_num is not None else ""
-        return f"{prefix}({s0_str}Dec {self.decrement_annuel:.0f} | Vol {vol_str} | Div {div_str})"
+        return f"{prefix}({s0_str}Dec {dec_str} | Vol {vol_str} | Div {div_str})"
         
     def _get_vol_dyn(self, scenario: MarketScenario):
         if self.vol is None:
@@ -100,7 +103,12 @@ class DecrementIndex:
             return np.full(scenario.total_jours, float(self.dividend_yield))
 
     def simulate(self, scenario: MarketScenario, nb_trajectoires, Z_chocs):
-        d_points = self.decrement_annuel / scenario.jours_par_an
+        is_percent = (self.decrement_type == "PERCENT")
+        if is_percent:
+            d_rate = (self.decrement_annuel / 100.0) if self.decrement_annuel > 1.0 else self.decrement_annuel
+        else:
+            d_points = self.decrement_annuel / scenario.jours_par_an
+
         dt = scenario.dt
         total_jours = scenario.total_jours
         
@@ -129,10 +137,16 @@ class DecrementIndex:
             
             # Application
             n_niv_pr = trajectoires_pr[:, t-1] * evol_pr
-            n_niv_dec = (trajectoires_dec[:, t-1] * evol_tr) - d_points
             
-            # Plancher à 0
-            n_niv_dec = np.maximum(0.0, n_niv_dec)
+            if is_percent:
+                # Décrément continu en pourcentage : prélèvement proportionnel au cours du jour
+                evol_dec = np.exp((r_perf_j + yield_j - d_rate - 0.5 * vol_j**2) * dt + choc_jour)
+                n_niv_dec = trajectoires_dec[:, t-1] * evol_dec
+            else:
+                # Décrément en points fixes :
+                n_niv_dec = (trajectoires_dec[:, t-1] * evol_tr) - d_points
+                # Plancher à 0
+                n_niv_dec = np.maximum(0.0, n_niv_dec)
             
             trajectoires_dec[:, t] = n_niv_dec
             trajectoires_pr[:, t] = n_niv_pr
@@ -472,7 +486,7 @@ class SimulationEngine:
         
         moy_payoff_dec = np.mean(payoffs_dec) * 100
         moy_payoff_pr = np.mean(payoffs_pr) * 100
-        print(f"- **Payoff moyen (Espérance de gain)** : Decrement = {moy_payoff_dec:.2f}% | Price Return = {moy_payoff_pr:.2f}%\n")
+        print(f"- **Payoff moyen actualisé** : Decrement = {moy_payoff_dec:.2f}% | Price Return = {moy_payoff_pr:.2f}%\n")
         
         niveau_initial = traj_dec[0, 0]
         
@@ -1384,7 +1398,7 @@ class SimulationEngine:
         ))
         fig.add_trace(go.Bar(
             x=short_noms, y=payoffs,
-            name="Espérance de Gain (%)",
+            name="Payoff Moyen Actualisé (% nom.)",
             marker_color="#2563eb",
             text=[f"{v:.1f}%" for v in payoffs],
             textposition="auto"
