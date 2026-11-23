@@ -548,14 +548,30 @@ class SimulationEngine:
         return reps, bin_stats, levier_equivalent
 
     def _add_background_regimes_plotly(self, fig, scenario):
-        """Ajoute les bandes de couleurs et les infos des périodes pour Plotly"""
-        colors = ['grey', 'red', 'green', 'orange', 'purple', 'blue']
-        for i, regime in enumerate(scenario.config_regimes):
-            color = colors[i % len(colors)]
-            fig.add_vrect(x0=regime['annee_debut'], x1=regime['annee_fin'], fillcolor=color, opacity=0.1, line_width=0, layer="below")
-            fig.add_annotation(x=(regime['annee_debut'] + regime['annee_fin'])/2, y=1.0, yref="paper", 
-                               text=f"Période {i+1}<br>Drift PR: {regime.get('r_perf', 0.0)*100:+.1f}%",
-                               showarrow=False, bgcolor="rgba(255,255,255,0.8)", bordercolor="lightgray")
+        """Ajoute des teintes de fond très légères selon le signe du drift :
+        - Vert très subtil si drift positif
+        - Rouge très subtil si drift négatif
+        """
+        for regime in scenario.config_regimes:
+            r_perf = regime.get('r_perf', 0.0)
+            if r_perf > 0:
+                color = '#22c55e'  # Vert discret
+                opacity = 0.06
+            elif r_perf < 0:
+                color = '#ef4444'  # Rouge discret
+                opacity = 0.06
+            else:
+                color = '#94a3b8'  # Gris neutre
+                opacity = 0.04
+
+            fig.add_vrect(
+                x0=regime['annee_debut'],
+                x1=regime['annee_fin'],
+                fillcolor=color,
+                opacity=opacity,
+                line_width=0,
+                layer="below"
+            )
 
     def _add_product_levels_plotly(self, fig, product, scenario, niveau_initial):
         """Ajoute les barrières du produit Autocall pour Plotly"""
