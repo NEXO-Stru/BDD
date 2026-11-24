@@ -64,7 +64,7 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
     if dec_val is not None:
         dec_amount = float(dec_val)
     else:
-        dec_amount = 50.0 if dec_type == "POINTS" else 5.0
+        dec_amount = 0.0
 
     disp_name = f"{name} ({ticker})" if (ticker and ticker != 'nan') else name
 
@@ -177,8 +177,16 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                             dec_unit = st.selectbox("Unité", type_opts, index=def_u_idx, key=f"st_dectype_{i}_{asset_id}")
                         with sub_v:
                             is_pct = (dec_unit == "%")
+                            if db_params['dec_val'] == 0.0:
+                                def_dec_val = 0.0
+                            elif is_pct and db_params['dec_type'] == "PERCENT":
+                                def_dec_val = float(db_params['dec_val'])
+                            elif not is_pct and db_params['dec_type'] == "POINTS":
+                                def_dec_val = float(db_params['dec_val'])
+                            else:
+                                def_dec_val = 5.0 if is_pct else 50.0
                             step_dec = 0.25 if is_pct else 5.0
-                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(db_params['dec_val']), step=step_dec, format="%.2f", key=f"st_dec_{i}_{asset_id}")
+                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(def_dec_val), step=step_dec, format="%.2f", key=f"st_dec_{i}_{asset_id}_{dec_unit}")
                         dec_type_final = "PERCENT" if dec_unit == "%" else "POINTS"
                     with c3:
                         vol = st.number_input(f"Volatilité Annuelle (%)", value=float(db_params['vol'] * 100.0), step=1.0, format="%.2f", key=f"st_vol_{i}_{asset_id}")
@@ -204,9 +212,9 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                             dec_unit = st.selectbox("Unité", type_opts, index=0, key=f"st_cust_dectype_{i}")
                         with sub_v:
                             is_pct = (dec_unit == "%")
-                            def_val = 5.0 if is_pct else (50.0 if i == 0 else 40.0)
+                            def_val = 5.0 if is_pct else 50.0
                             step_dec = 0.25 if is_pct else 5.0
-                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(def_val), step=step_dec, format="%.2f", key=f"st_cust_dec_{i}")
+                            dec = st.number_input(f"Décrément ({dec_unit})", value=float(def_val), step=step_dec, format="%.2f", key=f"st_cust_dec_{i}_{dec_unit}")
                         dec_type_final = "PERCENT" if dec_unit == "%" else "POINTS"
                     with c3:
                         vol = st.number_input(f"Volatilité Annuelle (%)", value=18.0 if i == 0 else 20.0, step=1.0, format="%.1f", key=f"st_cust_vol_{i}")
