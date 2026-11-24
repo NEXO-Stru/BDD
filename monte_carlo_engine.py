@@ -393,11 +393,28 @@ class SimulationEngine:
         results = {}
         for idx in list_indices:
             traj_pr, traj_dec = idx.simulate(scenario, self.nb_trajectoires, Z_chocs)
+            s0 = idx.niveau_initial
+
+            # 1. Maturité
             val_fin_dec = traj_dec[:, -1]
             val_fin_pr = traj_pr[:, -1]
-            moy_dec = np.mean(val_fin_dec)
-            moy_pr = np.mean(val_fin_pr)
-            s0 = idx.niveau_initial
+            moy_dec = float(np.mean(val_fin_dec))
+            moy_pr = float(np.mean(val_fin_pr))
+
+            # 2. Horizon 1 An
+            j_1an = min(scenario.total_jours, 1 * scenario.jours_par_an)
+            val_1an_dec = traj_dec[:, j_1an]
+            val_1an_pr = traj_pr[:, j_1an]
+            moy_1an_dec = float(np.mean(val_1an_dec))
+            moy_1an_pr = float(np.mean(val_1an_pr))
+
+            # 3. Horizon 5 Ans
+            has_5ans = (scenario.annees >= 5)
+            j_5ans = min(scenario.total_jours, 5 * scenario.jours_par_an)
+            val_5ans_dec = traj_dec[:, j_5ans]
+            val_5ans_pr = traj_pr[:, j_5ans]
+            moy_5ans_dec = float(np.mean(val_5ans_dec))
+            moy_5ans_pr = float(np.mean(val_5ans_pr))
             
             results[idx.nom] = {
                 "index": idx,
@@ -410,7 +427,20 @@ class SimulationEngine:
                 "ecart_moy_pts": moy_dec - moy_pr,
                 "ecart_moy_pct": ((moy_dec - moy_pr) / s0) * 100.0,
                 "pct_crash_50_dec": np.mean(val_fin_dec < 0.50 * s0) * 100.0,
-                "pct_crash_50_pr": np.mean(val_fin_pr < 0.50 * s0) * 100.0
+                "pct_crash_50_pr": np.mean(val_fin_pr < 0.50 * s0) * 100.0,
+                "moy_1an_dec": moy_1an_dec,
+                "moy_1an_pr": moy_1an_pr,
+                "moy_1an_dec_pct": (moy_1an_dec / s0 - 1.0) * 100.0,
+                "moy_1an_pr_pct": (moy_1an_pr / s0 - 1.0) * 100.0,
+                "ecart_1an_pts": moy_1an_dec - moy_1an_pr,
+                "ecart_1an_pct": ((moy_1an_dec - moy_1an_pr) / s0) * 100.0,
+                "has_5ans": has_5ans,
+                "moy_5ans_dec": moy_5ans_dec,
+                "moy_5ans_pr": moy_5ans_pr,
+                "moy_5ans_dec_pct": (moy_5ans_dec / s0 - 1.0) * 100.0,
+                "moy_5ans_pr_pct": (moy_5ans_pr / s0 - 1.0) * 100.0,
+                "ecart_5ans_pts": moy_5ans_dec - moy_5ans_pr,
+                "ecart_5ans_pct": ((moy_5ans_dec - moy_5ans_pr) / s0) * 100.0,
             }
         return results
 

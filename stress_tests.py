@@ -304,22 +304,26 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
             with st.spinner(f"Génération de {int(nb_trajectoires):,} trajectoires Monte Carlo vectorisées..."):
                 results_multi = moteur.simulate_multi_indices(liste_indices, scenario_krach)
 
-                st.markdown(f"<div class='section-title'>Indicateurs Clés à Maturité (Année {scenario_krach.annees})</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='section-title'>Indicateurs Clés & Niveaux Moyens (1 An, 5 Ans et Maturité)</div>", unsafe_allow_html=True)
 
                 data_macro = []
                 for nom_idx, d in results_multi.items():
                     dec_unit_str = "%" if getattr(d['index'], 'decrement_type', 'POINTS') == "PERCENT" else "pts"
-                    data_macro.append({
+                    row = {
                         "Indice": nom_idx,
                         "Spot Initial S0": f"{d['index'].niveau_initial:.2f} pts",
                         "Décrément Annuel": f"{d['index'].decrement_annuel:.2f} {dec_unit_str}",
                         "Volatilité": f"{d['index'].vol*100:.1f} %",
                         "Dividende Réinvesti": f"{d['index'].dividend_yield*100:.2f} %",
-                        "Niveau Final Décrément": f"{d['moy_dec']:.1f} pts ({d['moy_dec_pct']:+.1f} %)",
-                        "Niveau Final Price Return": f"{d['moy_pr']:.1f} pts ({d['moy_pr_pct']:+.1f} %)",
-                        "Écart Moyen (Dec - PR)": f"{d['ecart_moy_pct']:+.2f} % ({d['ecart_moy_pts']:+.1f} pts)",
-                        "Risque Crash < 50%": f"{d['pct_crash_50_dec']:.1f} % (vs {d['pct_crash_50_pr']:.1f} % PR)"
-                    })
+                        "Niveau Moyen 1 An": f"{d['moy_1an_dec']:.1f} pts ({d['moy_1an_dec_pct']:+.1f}%) [vs {d['moy_1an_pr']:.1f} pts | {d['moy_1an_pr_pct']:+.1f}% PR]",
+                    }
+                    if d.get("has_5ans", True):
+                        row["Niveau Moyen 5 Ans"] = f"{d['moy_5ans_dec']:.1f} pts ({d['moy_5ans_dec_pct']:+.1f}%) [vs {d['moy_5ans_pr']:.1f} pts | {d['moy_5ans_pr_pct']:+.1f}% PR]"
+
+                    row[f"Niveau Moyen Final ({scenario_krach.annees} ans)"] = f"{d['moy_dec']:.1f} pts ({d['moy_dec_pct']:+.1f}%) [vs {d['moy_pr']:.1f} pts | {d['moy_pr_pct']:+.1f}% PR]"
+                    row["Écart Final (Dec - PR)"] = f"{d['ecart_moy_pct']:+.2f} % ({d['ecart_moy_pts']:+.1f} pts)"
+                    row["Risque Crash < 50%"] = f"{d['pct_crash_50_dec']:.1f} % (vs {d['pct_crash_50_pr']:.1f} % PR)"
+                    data_macro.append(row)
                 st.dataframe(pd.DataFrame(data_macro), use_container_width=True, hide_index=True)
 
                 st.divider()
