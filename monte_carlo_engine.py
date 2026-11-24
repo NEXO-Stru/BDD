@@ -1167,32 +1167,23 @@ class SimulationEngine:
         
         axe_temps = np.linspace(0, scenario.annees, scenario.total_jours + 1)
         palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c', '#0891b2']
+        nb_indices = len(results)
         
-        # 1. Price Return de référence (issu du premier indice)
-        premier_result = next(iter(results.values()))
-        s0_ref = premier_result["index"].niveau_initial
-        pr_pct = (premier_result["traj_pr"] / s0_ref) * 100.0
-        pr_med = np.median(pr_pct, axis=0)
-        
-        fig.add_trace(go.Scatter(
-            x=axe_temps, y=pr_med, mode='lines',
-            line=dict(color='#64748b', width=2.5, dash='dash'),
-            name='Price Return Référence (Médiane)',
-            legendgroup='PR'
-        ))
-        
-        # 2. Chaque indice Décrément
+        # Pour chaque indice : son fuseau P10-P90, sa médiane Décrément et son propre Price Return médian
         for idx_i, (nom_idx, data) in enumerate(results.items()):
             color = palette[idx_i % len(palette)]
             idx_obj = data["index"]
             s0 = idx_obj.niveau_initial
-            dec_pct = (data["traj_dec"] / s0) * 100.0
             
-            med = np.median(dec_pct, axis=0)
+            dec_pct = (data["traj_dec"] / s0) * 100.0
+            pr_pct = (data["traj_pr"] / s0) * 100.0
+            
+            med_dec = np.median(dec_pct, axis=0)
             p10 = np.percentile(dec_pct, 10, axis=0)
             p90 = np.percentile(dec_pct, 90, axis=0)
+            med_pr = np.median(pr_pct, axis=0)
             
-            # Fuseau P10 - P90
+            # Fuseau P10 - P90 (Décrément)
             fig.add_trace(go.Scatter(
                 x=axe_temps, y=p90, mode='lines',
                 line=dict(width=0),
@@ -1209,13 +1200,25 @@ class SimulationEngine:
                 legendgroup=nom_idx,
                 showlegend=False
             ))
-            # Médiane (trait plein épais)
+            # Médiane Décrément (trait plein épais)
+            dec_name = f"{nom_idx} (Décrément)" if nb_indices > 1 else f"{nom_idx} (Décrément)"
             fig.add_trace(go.Scatter(
-                x=axe_temps, y=med, mode='lines',
+                x=axe_temps, y=med_dec, mode='lines',
                 line=dict(color=color, width=2.8),
-                name=nom_idx,
+                name=dec_name,
                 legendgroup=nom_idx,
-                showlegend=True
+                showlegend=True,
+                hovertemplate=f"<b>{nom_idx} (Décrément)</b><br>Horizon: %{{x:.2f}} ans<br>Niveau: <b>%{{y:.1f}}%</b><extra></extra>"
+            ))
+            # Médiane Price Return propre à cet indice (strictement la médiane en pointillé, même couleur, sans distribution)
+            pr_name = f"{nom_idx} (Price Return)"
+            fig.add_trace(go.Scatter(
+                x=axe_temps, y=med_pr, mode='lines',
+                line=dict(color=color, width=2.0, dash='dash'),
+                name=pr_name,
+                legendgroup=nom_idx,
+                showlegend=True,
+                hovertemplate=f"<b>{nom_idx} (Price Return)</b><br>Horizon: %{{x:.2f}} ans<br>Niveau PR Médian: <b>%{{y:.1f}}%</b><extra></extra>"
             ))
             
         fig.update_layout(
