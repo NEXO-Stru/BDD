@@ -1917,6 +1917,7 @@ class SimulationEngine:
 
     def plot_pricing_distribution_tri(self, results: dict):
         """Histogramme de distribution des Rendements (TRA) pour chaque indice."""
+        import re
         palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
         fig = go.Figure()
         
@@ -1926,18 +1927,21 @@ class SimulationEngine:
             # Bornage de sécurité pour affichage propre
             tri_sub = np.clip(tri_vals, -50.0, 30.0)
             
+            m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+            ticker_short = m.group(1) if m else ((nom_idx[:20] + '...') if len(nom_idx) > 20 else nom_idx)
+            m_tri = data["tri_moyen"]
+            
             fig.add_trace(go.Histogram(
                 x=tri_sub,
-                name=nom_idx,
+                name=f"{ticker_short} (TRA Moy: {m_tri:.2f}%)",
                 marker_color=color,
                 opacity=0.55,
                 nbinsx=60,
                 histnorm='percent'
             ))
-            m_tri = data["tri_moyen"]
             fig.add_vline(
                 x=m_tri, line_dash="dot", line_color=color, line_width=2,
-                annotation_text=f"Moy {m_tri:.2f}%",
+                annotation_text=f"Moy {ticker_short}: {m_tri:.2f}%",
                 annotation_position="top right"
             )
             
@@ -1959,6 +1963,136 @@ class SimulationEngine:
                 borderwidth=1
             ),
             margin=dict(l=50, r=40, t=60, b=80)
+        )
+        return fig
+
+    def plot_pricing_distribution_fair_value(self, results: dict):
+        """Histogramme de distribution de la Fair Value (Payoff actualisé % du nominal) pour chaque indice."""
+        import re
+        palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
+        fig = go.Figure()
+        
+        for idx_i, (nom_idx, data) in enumerate(results.items()):
+            color = palette[idx_i % len(palette)]
+            fv_vals = data["payoffs"] * 100.0
+            fv_sub = np.clip(fv_vals, 0.0, 200.0)
+            
+            m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+            ticker_short = m.group(1) if m else ((nom_idx[:20] + '...') if len(nom_idx) > 20 else nom_idx)
+            m_fv = data["moy_payoff"]
+            
+            fig.add_trace(go.Histogram(
+                x=fv_sub,
+                name=f"{ticker_short} (FV Moy: {m_fv:.1f}%)",
+                marker_color=color,
+                opacity=0.55,
+                nbinsx=60,
+                histnorm='percent'
+            ))
+            fig.add_vline(
+                x=m_fv, line_dash="dot", line_color=color, line_width=2,
+                annotation_text=f"FV {ticker_short}: {m_fv:.1f}%",
+                annotation_position="top right"
+            )
+            
+        fig.add_vline(x=100.0, line_dash="dash", line_color="#475569", line_width=1.5, annotation_text="Nominal (100%)")
+        fig.update_layout(
+            barmode='overlay',
+            title="<b>Distribution Comparée de la Fair Value (Payoffs Actualisés)</b>",
+            xaxis_title="<b>Fair Value (% du nominal)</b>",
+            yaxis_title="<b>Proportion des Trajectoires (%)</b>",
+            template="plotly_white",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.20,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=80)
+        )
+        return fig
+
+    def plot_pricing_distribution_durations(self, results: dict, product: AutocallProduct = None):
+        """Diagramme en barres de la distribution discrète des Durées de vie effectives (Horizons de sortie)."""
+        import re
+        palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
+        fig = go.Figure()
+        
+        all_exit_times = set()
+        for nom_idx, data in results.items():
+            durees = data["metrics"]["duree_effective"]
+            unique_t = np.unique(np.round(durees, 2))
+            all_exit_times.update(unique_t.tolist())
+            
+        all_t_sorted = sorted(list(all_exit_times))
+        if not all_t_sorted:
+            all_t_sorted = [1.0]
+            
+        t_max = all_t_sorted[-1]
+        
+        # Si plus de 24 dates distinctes (ex: mensuelle), agrégation par semestre pour lisibilité
+        if len(all_t_sorted) > 24:
+            semestres = sorted(list(set([max(0.5, round(np.ceil(t * 2.0) / 2.0, 2)) for t in all_t_sorted])))
+            x_labels = [f"{s:.1f} an" if s <= 1.0 else (f"{s:.1f} ans (Maturité)" if s >= t_max - 0.1 else f"{s:.1f} ans") for s in semestres]
+            for idx_i, (nom_idx, data) in enumerate(results.items()):
+                color = palette[idx_i % len(palette)]
+                durees = data["metrics"]["duree_effective"]
+                total_n = len(durees)
+                m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+                ticker_short = m.group(1) if m else ((nom_idx[:20] + '...') if len(nom_idx) > 20 else nom_idx)
+                freqs = []
+                for s in semestres:
+                    mask = (durees <= s + 1e-4) & (durees > s - 0.5 + 1e-4) if s > 0.5 else (durees <= s + 1e-4)
+                    freqs.append(np.sum(mask) / total_n * 100.0)
+                dur_moy = data["duration"]
+                fig.add_trace(go.Bar(
+                    x=x_labels, y=freqs,
+                    name=f"{ticker_short} (Duration : {dur_moy:.2f} ans)",
+                    marker_color=color,
+                    text=[f"{v:.1f}%" if v >= 1.0 else "" for v in freqs],
+                    textposition="auto",
+                    hovertemplate=f"<b>%{{x}}</b><br>{ticker_short}: <b>%{{y:.1f}}%</b><extra></extra>"
+                ))
+        else:
+            x_labels = [f"{t:.2f} ans" if t < t_max - 1e-4 else f"{t:.2f} ans (Maturité)" for t in all_t_sorted]
+            for idx_i, (nom_idx, data) in enumerate(results.items()):
+                color = palette[idx_i % len(palette)]
+                durees = data["metrics"]["duree_effective"]
+                total_n = len(durees)
+                m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+                ticker_short = m.group(1) if m else ((nom_idx[:20] + '...') if len(nom_idx) > 20 else nom_idx)
+                freqs = [np.sum(np.isclose(durees, t, atol=0.03)) / total_n * 100.0 for t in all_t_sorted]
+                dur_moy = data["duration"]
+                fig.add_trace(go.Bar(
+                    x=x_labels, y=freqs,
+                    name=f"{ticker_short} (Duration : {dur_moy:.2f} ans)",
+                    marker_color=color,
+                    text=[f"{v:.1f}%" if v >= 1.0 else "" for v in freqs],
+                    textposition="auto",
+                    hovertemplate=f"<b>%{{x}}</b><br>{ticker_short}: <b>%{{y:.1f}}%</b><extra></extra>"
+                ))
+                
+        fig.update_layout(
+            barmode='group',
+            title="<b>Distribution des Durées de Vie Effectives (Horizons de Sortie)</b>",
+            xaxis_title="<b>Date / Horizon de Sortie (années)</b>",
+            yaxis_title="<b>Proportion des Trajectoires (%)</b>",
+            template="plotly_white",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=90)
         )
         return fig
 
