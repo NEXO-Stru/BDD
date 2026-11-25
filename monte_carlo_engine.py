@@ -1750,59 +1750,93 @@ class SimulationEngine:
         return fig
 
     def plot_pricing_kpis_bars(self, results: dict):
-        """Graphique à barres comparatif des KPIs majeurs de pricing (Autocall, TRI, PDI, Fair Value)."""
+        """Graphique comparatif des indicateurs de pricing en 2 volets distincts :
+        1. Volet Risque/Issues : Probabilités d'Autocall, Remboursement 100% et PDI (échelle 0-100%).
+        2. Volet Rendement : TRA Moyen et TRA Médian (échelle TRA %).
+        """
         import re
-        indices_noms = list(results.keys())
-        taux_autocall = [results[k]["pct_rappel"] for k in indices_noms]
-        tri_moyens = [results[k]["tri_moyen"] for k in indices_noms]
-        taux_pdi = [results[k]["pct_pdi"] for k in indices_noms]
-        payoffs = [results[k]["moy_payoff"] for k in indices_noms]
+        from plotly.subplots import make_subplots
         
+        indices_noms = list(results.keys())
         short_noms = []
         for idx_i, nom_idx in enumerate(indices_noms):
             m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
             ticker_short = m.group(1) if m else ((nom_idx[:25] + '...') if len(nom_idx) > 25 else nom_idx)
             short_noms.append(f"Indice {idx_i + 1} : {ticker_short}")
+
+        taux_autocall = [results[k]["pct_rappel"] for k in indices_noms]
+        remb_pair = [results[k].get("pct_remb_pair", 0.0) for k in indices_noms]
+        taux_pdi = [results[k]["pct_pdi"] for k in indices_noms]
         
-        fig = go.Figure()
+        tri_moyens = [results[k]["tri_moyen"] for k in indices_noms]
+        tri_medians = [results[k]["tri_median"] for k in indices_noms]
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=[
+                "<b>1. Probabilités d'Issues du Produit (%)</b>",
+                "<b>2. Rendement Espéré - TRA (%)</b>"
+            ],
+            horizontal_spacing=0.14
+        )
+
+        # --- SOUS-GRAPHIQUE 1 : ISSUES ET RISQUES (0 - 100%) ---
         fig.add_trace(go.Bar(
             x=short_noms, y=taux_autocall,
-            name="Taux d'Autocall (%)",
+            name="Autocall Anticipé (%)",
             marker_color="#16a34a",
             text=[f"{v:.1f}%" for v in taux_autocall],
-            textposition="auto"
-        ))
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>Autocall: <b>%{y:.1f}%</b><extra></extra>"
+        ), row=1, col=1)
+
+        fig.add_trace(go.Bar(
+            x=short_noms, y=remb_pair,
+            name="Remboursement au Pair (100%)",
+            marker_color="#64748b",
+            text=[f"{v:.1f}%" for v in remb_pair],
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>Remb. Pair: <b>%{y:.1f}%</b><extra></extra>"
+        ), row=1, col=1)
+
+        fig.add_trace(go.Bar(
+            x=short_noms, y=taux_pdi,
+            name="Risque de Perte PDI (%)",
+            marker_color="#dc2626",
+            text=[f"{v:.1f}%" for v in taux_pdi],
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>Perte PDI: <b>%{y:.1f}%</b><extra></extra>"
+        ), row=1, col=1)
+
+        # --- SOUS-GRAPHIQUE 2 : RENDEMENT TRA (%) ---
         fig.add_trace(go.Bar(
             x=short_noms, y=tri_moyens,
             name="TRA Moyen (%)",
             marker_color="#0284c7",
             text=[f"{v:.2f}%" for v in tri_moyens],
-            textposition="auto"
-        ))
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>TRA Moyen: <b>%{y:.2f}%</b><extra></extra>"
+        ), row=1, col=2)
+
         fig.add_trace(go.Bar(
-            x=short_noms, y=taux_pdi,
-            name="Probabilité sous PDI (%)",
-            marker_color="#dc2626",
-            text=[f"{v:.2f}%" for v in taux_pdi],
-            textposition="auto"
-        ))
-        fig.add_trace(go.Bar(
-            x=short_noms, y=payoffs,
-            name="Fair Value (% nom.)",
-            marker_color="#7c3aed",
-            text=[f"{v:.1f}%" for v in payoffs],
-            textposition="auto"
-        ))
+            x=short_noms, y=tri_medians,
+            name="TRA Médian (%)",
+            marker_color="#4f46e5",
+            text=[f"{v:.2f}%" for v in tri_medians],
+            textposition="auto",
+            hovertemplate="<b>%{x}</b><br>TRA Médian: <b>%{y:.2f}%</b><extra></extra>"
+        ), row=1, col=2)
+
+        fig.update_yaxes(title_text="<b>Probabilité (%)</b>", range=[0, 105], row=1, col=1)
+        fig.update_yaxes(title_text="<b>TRA (%)</b>", row=1, col=2)
+
         fig.update_layout(
             barmode='group',
-            title="<b>Comparaison des Indicateurs Clés de Risque et de Rendement</b>",
-            yaxis_title="<b>Pourcentage (%)</b>",
             template="plotly_white",
-            xaxis=dict(tickangle=0),
             legend=dict(
                 orientation="h",
                 yanchor="top",
-                y=-0.20,
+                y=-0.18,
                 xanchor="center",
                 x=0.5,
                 bgcolor="rgba(255,255,255,0.9)",
@@ -1814,7 +1848,7 @@ class SimulationEngine:
         return fig
 
     def plot_pricing_waterfall(self, results: dict, product: AutocallProduct):
-        """Graphique à barres comparant la distribution des sorties (Rappels par année vs Maturité)."""
+        """Graphique à barres comparant la distribution des sorties agrégées par Année."""
         palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
         fig = go.Figure()
         
@@ -1825,21 +1859,28 @@ class SimulationEngine:
             obs_rappel = data["obs_de_rappel"]
             total_traj = len(est_rappele)
             
-            x_labels = []
-            y_pcts = []
+            # Détermination de l'horizon total en années
+            annees_total = int(max(item["annee"] for item in schedule)) if len(schedule) > 0 else 1
+            recalls_par_annee = {y: 0.0 for y in range(1, annees_total + 1)}
             
-            # Constatations de rappel
+            # Constatations de rappel agrégées par année entière
             for item in schedule:
                 if not item["eligible"]:
                     continue
                 obs_k = item["obs_num"]
                 annee_val = item["annee"]
+                annee_idx = max(1, int(np.ceil(annee_val - 1e-5)))
                 pct = np.sum(est_rappele & (obs_rappel == obs_k)) / total_traj * 100.0
-                x_labels.append(f"Rappel An {annee_val:.2f}")
-                y_pcts.append(pct)
-                
+                if annee_idx in recalls_par_annee:
+                    recalls_par_annee[annee_idx] += pct
+                else:
+                    recalls_par_annee[annee_idx] = pct
+                    
+            x_labels = [f"Rappel An {y}" for y in range(1, annees_total + 1)]
+            y_pcts = [recalls_par_annee[y] for y in range(1, annees_total + 1)]
+            
             # Sorties à maturité
-            x_labels.append("Maturité : Remb. 100%")
+            x_labels.append("Maturité : Au Pair (100%)")
             y_pcts.append(data.get("pct_remb_pair", 0.0))
             
             x_labels.append("Maturité : Perte PDI")
@@ -1848,13 +1889,16 @@ class SimulationEngine:
             fig.add_trace(go.Bar(
                 x=x_labels, y=y_pcts,
                 name=nom_idx,
-                marker_color=color
+                marker_color=color,
+                text=[f"{v:.1f}%" if v >= 1.0 else "" for v in y_pcts],
+                textposition="auto",
+                hovertemplate="<b>%{x}</b><br>" + nom_idx + ": <b>%{y:.1f}%</b><extra></extra>"
             ))
             
         fig.update_layout(
             barmode='group',
-            title="<b>Distribution des Scénarios de Sortie (Rappels vs Maturité)</b>",
-            xaxis_title="<b>Scénario de Sortie</b>",
+            title="<b>Distribution des Scénarios de Sortie par Année</b>",
+            xaxis_title="<b>Horizon et Mode de Sortie</b>",
             yaxis_title="<b>Fréquence (%)</b>",
             template="plotly_white",
             legend=dict(
@@ -1872,7 +1916,7 @@ class SimulationEngine:
         return fig
 
     def plot_pricing_distribution_tri(self, results: dict):
-        """Histogramme de distribution des Rendements (TRI / IRR annualisé) pour chaque indice."""
+        """Histogramme de distribution des Rendements (TRA) pour chaque indice."""
         palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
         fig = go.Figure()
         
@@ -1886,16 +1930,22 @@ class SimulationEngine:
                 x=tri_sub,
                 name=nom_idx,
                 marker_color=color,
-                opacity=0.6,
-                nbinsx=50,
+                opacity=0.55,
+                nbinsx=60,
                 histnorm='percent'
             ))
+            m_tri = data["tri_moyen"]
+            fig.add_vline(
+                x=m_tri, line_dash="dot", line_color=color, line_width=2,
+                annotation_text=f"Moy {m_tri:.2f}%",
+                annotation_position="top right"
+            )
             
-        fig.add_vline(x=0.0, line_dash="dash", line_color="#475569", line_width=1.5, annotation_text="TRA 0% (Capital au pair)")
+        fig.add_vline(x=0.0, line_dash="dash", line_color="#475569", line_width=1.5, annotation_text="TRA 0% (Remb. 100%)")
         fig.update_layout(
             barmode='overlay',
-            title="<b>Distribution Comparée du TRA Actuariel</b>",
-            xaxis_title="<b>Taux de Rendement Actuariel Annualisé - TRA (%)</b>",
+            title="<b>Distribution Comparée du TRA</b>",
+            xaxis_title="<b>TRA (%)</b>",
             yaxis_title="<b>Proportion des Trajectoires (%)</b>",
             template="plotly_white",
             legend=dict(

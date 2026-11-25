@@ -333,23 +333,40 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 memoire_str = " (Mémoire)" if (type_produit == "Phoenix" and avec_memoire) else (" (Sans Mémoire)" if type_produit == "Phoenix" else "")
                 st.markdown(f"<div class='section-title'>Indicateurs de Performance et de Risque : {type_produit}{memoire_str}</div>", unsafe_allow_html=True)
 
+                def _render_kpi_card(title, value, subtitle=""):
+                    sub_text = subtitle if subtitle else "&nbsp;"
+                    return f"""<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; height: 105px; min-height: 105px; max-height: 105px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;">
+                        <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{title}">{title}</div>
+                        <div style="font-size: 1.45rem; color: #0f172a; font-weight: 700; line-height: 1.2; height: 32px; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{value}</div>
+                        <div style="font-size: 0.76rem; color: #64748b; font-weight: 500; height: 18px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{subtitle}">{sub_text}</div>
+                    </div>"""
+
                 for nom_idx, d in results_pricing.items():
-                    with st.container():
-                        st.markdown(f"##### {nom_idx}")
-                        if type_produit == "Phoenix":
-                            c1, c2, c3, c4, c5 = st.columns(5)
-                            c1.metric("Taux d'Autocall", f"{d['pct_rappel']:.1f} %")
-                            c2.metric("TRA Moyen", f"{d['tri_moyen']:.2f} %", f"Médian {d['tri_median']:.2f}%")
-                            c3.metric("Duration Espérée", f"{d['duration']:.2f} ans")
-                            c4.metric("Risque PDI (Perte)", f"{d['pct_pdi']:.2f} %", f"Perte moy. {d['perte_moy_pdi']:.1f}%")
-                            c5.metric("Coupons Encaissés", f"{d['taux_coupons_encaisses']:.1f} %", f"Mém. activée {d['efficacite_memoire']:.1f}%")
-                        else:
-                            c1, c2, c3, c4, c5 = st.columns(5)
-                            c1.metric("Taux d'Autocall", f"{d['pct_rappel']:.1f} %")
-                            c2.metric("TRA Moyen", f"{d['tri_moyen']:.2f} %", f"Médian {d['tri_median']:.2f}%")
-                            c3.metric("Duration Espérée", f"{d['duration']:.2f} ans")
-                            c4.metric("Risque PDI (Perte)", f"{d['pct_pdi']:.2f} %", f"Perte moy. {d['perte_moy_pdi']:.1f}%")
-                            c5.metric("Fair Value", f"{d['moy_payoff']:.2f} %", f"TRA > 0 : {d['pct_tri_positif']:.1f}%")
+                    st.markdown(f"<div style='font-weight: 600; font-size: 1.05rem; margin-top: 10px; margin-bottom: 8px; color: #0f172a;'>{nom_idx}</div>", unsafe_allow_html=True)
+                    if type_produit == "Phoenix":
+                        c1, c2, c3, c4, c5 = st.columns(5)
+                        with c1:
+                            st.markdown(_render_kpi_card("Taux d'Autocall", f"{d['pct_rappel']:.1f} %", "Rappel anticipé"), unsafe_allow_html=True)
+                        with c2:
+                            st.markdown(_render_kpi_card("TRA", f"{d['tri_moyen']:.2f} %", f"Médian {d['tri_median']:.2f}%"), unsafe_allow_html=True)
+                        with c3:
+                            st.markdown(_render_kpi_card("Duration", f"{d['duration']:.2f} ans", "Durée effective"), unsafe_allow_html=True)
+                        with c4:
+                            st.markdown(_render_kpi_card("Risque PDI", f"{d['pct_pdi']:.2f} %", f"Perte moy. {d['perte_moy_pdi']:.1f}%"), unsafe_allow_html=True)
+                        with c5:
+                            st.markdown(_render_kpi_card("Coupons Encaissés", f"{d['taux_coupons_encaisses']:.1f} %", f"Mém. activée {d['efficacite_memoire']:.1f}%"), unsafe_allow_html=True)
+                    else:
+                        c1, c2, c3, c4, c5 = st.columns(5)
+                        with c1:
+                            st.markdown(_render_kpi_card("Taux d'Autocall", f"{d['pct_rappel']:.1f} %", "Rappel anticipé"), unsafe_allow_html=True)
+                        with c2:
+                            st.markdown(_render_kpi_card("TRA", f"{d['tri_moyen']:.2f} %", f"Médian {d['tri_median']:.2f}%"), unsafe_allow_html=True)
+                        with c3:
+                            st.markdown(_render_kpi_card("Duration", f"{d['duration']:.2f} ans", "Durée effective"), unsafe_allow_html=True)
+                        with c4:
+                            st.markdown(_render_kpi_card("Risque PDI", f"{d['pct_pdi']:.2f} %", f"Perte moy. {d['perte_moy_pdi']:.1f}%"), unsafe_allow_html=True)
+                        with c5:
+                            st.markdown(_render_kpi_card("Fair Value", f"{d['moy_payoff']:.2f} %", f"TRA > 0 : {d['pct_tri_positif']:.1f}%"), unsafe_allow_html=True)
 
                 st.divider()
 
@@ -372,7 +389,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                         "Taux d'Autocall": f"{d['pct_rappel']:.1f} %",
                         "TRA Moyen": f"{d['tri_moyen']:.2f} %",
                         "TRA Médian": f"{d['tri_median']:.2f} %",
-                        "Duration Espérée": f"{d['duration']:.2f} ans",
+                        "Duration": f"{d['duration']:.2f} ans",
                         "Risque PDI": f"{d['pct_pdi']:.2f} %",
                         "Perte Moyenne si PDI": f"{d['perte_moy_pdi']:.1f} %",
                         "Fair Value (% nom.)": f"{d['moy_payoff']:.2f} %"
@@ -393,12 +410,12 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 st.plotly_chart(fig_kpis, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>2. Distribution des Scénarios de Sortie (Waterfall)</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>2. Scénarios de Sortie par Année (Rappels vs Échéance)</div>", unsafe_allow_html=True)
                 fig_waterfall = moteur.plot_pricing_waterfall(results_pricing, mon_produit)
                 st.plotly_chart(fig_waterfall, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>3. Distribution Comparée du Rendement (TRA Actuariel)</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>3. Distribution Comparée du TRA</div>", unsafe_allow_html=True)
                 fig_tri_dist = moteur.plot_pricing_distribution_tri(results_pricing)
                 st.plotly_chart(fig_tri_dist, use_container_width=True, config={'displayModeBar': False})
 
