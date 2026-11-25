@@ -153,17 +153,94 @@ class DecrementIndex:
             
         return trajectoires_pr, trajectoires_dec
 
+    def simulate_single(self, r_rf: float, total_jours: int, dt: float, nb_trajectoires: int, Z_chocs: np.ndarray, jours_par_an: int = 252):
+        """Simule la trajectoire propre de l'indice sous drift risque-neutre r_rf."""
+        dec_type = str(self.decrement_type).upper()
+        vol_val = float(self.vol[0] if isinstance(self.vol, (list, tuple, np.ndarray)) else self.vol)
+        div_val = float(self.dividend_yield[0] if isinstance(self.dividend_yield, (list, tuple, np.ndarray)) else (self.dividend_yield or 0.0))
+        
+        trajectoires = np.zeros((nb_trajectoires, total_jours + 1))
+        trajectoires[:, 0] = self.niveau_initial
+        
+        if dec_type == "PERCENT":
+            d_rate = (self.decrement_annuel / 100.0) if self.decrement_annuel > 1.0 else self.decrement_annuel
+            drift_dec = r_rf - d_rate - 0.5 * vol_val**2
+            chocs_cum = np.cumsum(vol_val * np.sqrt(dt) * Z_chocs, axis=1)
+            t_steps = np.arange(1, total_jours + 1)
+            evol = np.exp(drift_dec * dt * t_steps + chocs_cum)
+            trajectoires[:, 1:] = self.niveau_initial * evol
+            
+        elif dec_type == "PRICE_RETURN":
+            drift_pr = r_rf - div_val - 0.5 * vol_val**2
+            chocs_cum = np.cumsum(vol_val * np.sqrt(dt) * Z_chocs, axis=1)
+            t_steps = np.arange(1, total_jours + 1)
+            evol = np.exp(drift_pr * dt * t_steps + chocs_cum)
+            trajectoires[:, 1:] = self.niveau_initial * evol
+            
+        elif dec_type == "TOTAL_RETURN":
+            drift_tr = r_rf - 0.5 * vol_val**2
+            chocs_cum = np.cumsum(vol_val * np.sqrt(dt) * Z_chocs, axis=1)
+            t_steps = np.arange(1, total_jours + 1)
+            evol = np.exp(drift_tr * dt * t_steps + chocs_cum)
+            trajectoires[:, 1:] = self.niveau_initial * evol
+            
+        else:  # "POINTS"
+            d_points = self.decrement_annuel / jours_par_an
+            drift_tr = r_rf - 0.5 * vol_val**2
+            for t in range(1, total_jours + 1):
+                z = Z_chocs[:, t-1]
+                evol_tr = np.exp(drift_tr * dt + vol_val * np.sqrt(dt) * z)
+                n_niv = (trajectoires[:, t-1] * evol_tr) - d_points
+                trajectoires[:, t] = np.maximum(0.0, n_niv)
+                
+        return trajectoires
+
+
+def _resoudre_tri_vectorise(cf_matrix: np.ndarray, capitals: np.ndarray, exit_times: np.ndarray, t_obs_array: np.ndarray) -> np.ndarray:
+    """Calcule le Taux de Rendement Interne (TRI / IRR) annualisé exact par trajectoire via Newton-Raphson vectorisé."""
+    total_cash = np.sum(cf_matrix, axis=1) + capitals
+    # Initialisation robuste : TRI composé estimé sur la durée de vie effective
+    safe_exits = np.maximum(0.08, exit_times)
+    r = np.where(total_cash > 0, (total_cash) ** (1.0 / safe_exits) - 1.0, -1.0)
+    r = np.clip(r, -0.99, 1.5)
+    
+    for _ in range(8):
+        one_plus_r = np.maximum(0.01, 1.0 + r)
+        val = -1.0
+        der = 0.0
+        for k, t in enumerate(t_obs_array):
+            mask = (t <= exit_times)
+            cf_k = cf_matrix[:, k]
+            denom = (one_plus_r) ** t
+            val += mask * (cf_k / denom)
+            der -= mask * (t * cf_k / (denom * one_plus_r))
+            
+        denom_cap = (one_plus_r) ** exit_times
+        val += capitals / denom_cap
+        der -= exit_times * capitals / (denom_cap * one_plus_r)
+        
+        der = np.where(np.abs(der) < 1e-12, -1e-12, der)
+        diff = np.clip(val / der, -0.4, 0.4)
+        r = r - diff
+        r = np.maximum(-0.999, r)
+        if np.max(np.abs(diff)) < 1e-5:
+            break
+            
+    return r
+
 
 class AutocallProduct:
     """Modélise le produit structuré et ses règles de marché (classe de base)."""
-    def __init__(self, barriere_rappel=1000.0, niveau_pdi=500.0, non_call_period_mois=11, frequence_obs_mois=3, degressivite=0.0, coupon_periode=2.0, ref_s0=None):
+    def __init__(self, barriere_rappel=1000.0, niveau_pdi=500.0, non_call_period_mois=12, 
+                 frequence_obs_mois=3, degressivite=0.0, plancher_rappel=None, coupon_periode=2.0, ref_s0=None):
         self.barriere_rappel = float(barriere_rappel)
         self.niveau_pdi = float(niveau_pdi)
-        self.non_call_period_mois = non_call_period_mois
-        self.frequence_obs_mois = frequence_obs_mois
-        self.degressivite = degressivite
-        self.coupon_periode = coupon_periode / 100.0
+        self.non_call_period_mois = int(non_call_period_mois)
+        self.frequence_obs_mois = int(frequence_obs_mois)
+        self.degressivite = float(degressivite)
+        self.coupon_periode = float(coupon_periode) / 100.0
         self.ref_s0 = float(ref_s0) if ref_s0 is not None else self.barriere_rappel
+        self.plancher_rappel = float(plancher_rappel) if plancher_rappel is not None else None
         
     def clone_for_spot(self, new_s0):
         ratio = float(new_s0) / self.ref_s0
@@ -173,60 +250,152 @@ class AutocallProduct:
             non_call_period_mois=self.non_call_period_mois,
             frequence_obs_mois=self.frequence_obs_mois,
             degressivite=self.degressivite,
+            plancher_rappel=self.plancher_rappel * ratio if self.plancher_rappel is not None else None,
             coupon_periode=self.coupon_periode * 100.0,
             ref_s0=float(new_s0)
         )
+
+    def get_barrieres_schedule(self, total_jours: int, jours_par_an: int = 252):
+        """Calcule le calendrier des dates d'observation et les barrières de rappel associées."""
+        jours_par_mois = jours_par_an // 12
+        if self.frequence_obs_mois == 0:
+            jours_entre_obs = 1  # Quotidien
+        else:
+            jours_entre_obs = max(1, jours_par_mois * self.frequence_obs_mois)
+            
+        dates_obs_jours = list(range(jours_entre_obs, total_jours + 1, jours_entre_obs))
+        # Sécurité mathématique : forcer la date de maturité finale
+        if total_jours not in dates_obs_jours:
+            dates_obs_jours.append(total_jours)
+            
+        baisse_pts = self.barriere_rappel * (self.degressivite / 100.0)
+        plancher_pts = self.plancher_rappel if self.plancher_rappel is not None else 0.0
+        non_call_jours = jours_par_mois * self.non_call_period_mois
         
-    def evaluate(self, trajectoires, scenario: MarketScenario, nb_trajectoires):
+        schedule = []
+        nb_obs_deg = 0
+        for k, t in enumerate(dates_obs_jours):
+            annee = t / float(jours_par_an)
+            is_eligible = (t >= non_call_jours)
+            if is_eligible:
+                barr = max(plancher_pts, self.barriere_rappel - (nb_obs_deg * baisse_pts))
+                nb_obs_deg += 1
+            else:
+                barr = np.nan
+                
+            schedule.append({
+                "obs_num": k + 1,
+                "jour": t,
+                "annee": annee,
+                "eligible": is_eligible,
+                "barriere_pts": barr,
+                "barriere_pct": (barr / self.ref_s0 * 100.0) if np.isfinite(barr) else np.nan
+            })
+        return schedule
+        
+    def evaluate(self, trajectoires, scenario=None, nb_trajectoires=None, total_jours=None, jours_par_an=252):
+        if nb_trajectoires is None:
+            nb_trajectoires = trajectoires.shape[0]
+        if total_jours is None:
+            total_jours = scenario.total_jours if scenario is not None else (trajectoires.shape[1] - 1)
+        if scenario is not None and hasattr(scenario, 'jours_par_an'):
+            jours_par_an = scenario.jours_par_an
+            
         est_rappele = np.zeros(nb_trajectoires, dtype=bool)
         obs_de_rappel = np.zeros(nb_trajectoires, dtype=int)
         
-        jours_par_mois = scenario.jours_par_an // 12
-        jours_entre_observations = jours_par_mois * self.frequence_obs_mois
-        
-        baisse_en_points = self.barriere_rappel * (self.degressivite / 100.0)
-        nb_observations_total = 0
-        nb_observations_degressivite = 0
-        
-        for t in range(1, scenario.total_jours + 1):
-            if (t % jours_entre_observations == 0):
-                nb_observations_total += 1
-                if (t >= jours_par_mois * self.non_call_period_mois):
-                    barriere_actuelle = self.barriere_rappel - (nb_observations_degressivite * baisse_en_points)
-                    nouveaux_rappels = (~est_rappele) & (trajectoires[:, t] >= barriere_actuelle)
-                    
-                    obs_de_rappel[nouveaux_rappels] = nb_observations_total
-                    est_rappele = est_rappele | nouveaux_rappels
-                    
-                    nb_observations_degressivite += 1
-                
+        schedule = self.get_barrieres_schedule(total_jours, jours_par_an)
+        for item in schedule:
+            if not item["eligible"]:
+                continue
+            k_obs = item["obs_num"]
+            t_j = item["jour"]
+            barr = item["barriere_pts"]
+            
+            nouveaux_rappels = (~est_rappele) & (trajectoires[:, t_j] >= barr)
+            obs_de_rappel[nouveaux_rappels] = k_obs
+            est_rappele = est_rappele | nouveaux_rappels
+            
         return est_rappele, obs_de_rappel
         
-    def calculate_payoff(self, trajectoires, est_rappele, obs_de_rappel, niveau_initial, scenario: MarketScenario, taux_actualisation: float = 0.0):
+    def calculate_payoff(self, trajectoires, est_rappele, obs_de_rappel, niveau_initial, scenario=None, taux_actualisation: float = 0.0, total_jours=None, jours_par_an=252):
         # Payoff de type Athéna (comportement par défaut)
         nb_trajectoires = trajectoires.shape[0]
-        payoffs = np.zeros(nb_trajectoires)
+        if total_jours is None:
+            total_jours = scenario.total_jours if scenario is not None else (trajectoires.shape[1] - 1)
+        if scenario is not None and hasattr(scenario, 'jours_par_an'):
+            jours_par_an = scenario.jours_par_an
+        annees_totales = total_jours / float(jours_par_an)
         
-        # Pour l'actualisation
-        jours_par_mois = scenario.jours_par_an // 12
-        jours_entre_observations = jours_par_mois * self.frequence_obs_mois
-        annees_par_obs = jours_entre_observations / scenario.jours_par_an
+        schedule = self.get_barrieres_schedule(total_jours, jours_par_an)
+        annees_map = {item["obs_num"]: item["annee"] for item in schedule}
+        
+        payoffs = np.zeros(nb_trajectoires)
+        cashflows_nom = np.zeros(nb_trajectoires)
+        tri_annualise = np.zeros(nb_trajectoires)
+        duree_effective = np.zeros(nb_trajectoires)
+        coupons_touches = np.zeros(nb_trajectoires)
+        capital_rembourse = np.zeros(nb_trajectoires)
         
         # 1. Rappelés
-        payoffs[est_rappele] = 1.0 + (self.coupon_periode * obs_de_rappel[est_rappele])
-        temps_rappel = obs_de_rappel[est_rappele] * annees_par_obs
-        payoffs[est_rappele] *= np.exp(-taux_actualisation * temps_rappel)
-        
-        # 2. Non rappelés, au-dessus du PDI
-        valeurs_finales = trajectoires[:, -1]
-        au_dessus_pdi = (~est_rappele) & (valeurs_finales >= self.niveau_pdi)
-        payoffs[au_dessus_pdi] = 1.0 * np.exp(-taux_actualisation * scenario.annees)
-        
-        # 3. Non rappelés, sous le PDI
-        sous_pdi = (~est_rappele) & (valeurs_finales < self.niveau_pdi)
-        payoffs[sous_pdi] = (valeurs_finales[sous_pdi] / niveau_initial) * np.exp(-taux_actualisation * scenario.annees)
-        
-        return payoffs
+        rappeles_idx = np.where(est_rappele)[0]
+        if len(rappeles_idx) > 0:
+            obs_r = obs_de_rappel[rappeles_idx]
+            temps_r = np.array([annees_map.get(o, annees_totales) for o in obs_r])
+            duree_effective[rappeles_idx] = temps_r
+            
+            coupons_val = self.coupon_periode * obs_r
+            coupons_touches[rappeles_idx] = coupons_val
+            capital_rembourse[rappeles_idx] = 1.0
+            
+            cash_tot = 1.0 + coupons_val
+            cashflows_nom[rappeles_idx] = cash_tot
+            payoffs[rappeles_idx] = cash_tot * np.exp(-taux_actualisation * temps_r)
+            
+            tri_annualise[rappeles_idx] = np.where(
+                temps_r > 0,
+                (cash_tot) ** (1.0 / temps_r) - 1.0,
+                coupons_val
+            )
+            
+        # 2. Non rappelés
+        non_rappeles_idx = np.where(~est_rappele)[0]
+        if len(non_rappeles_idx) > 0:
+            duree_effective[non_rappeles_idx] = annees_totales
+            facteur_actu_mat = np.exp(-taux_actualisation * annees_totales)
+            valeurs_finales = trajectoires[non_rappeles_idx, -1]
+            
+            pdi_ok = valeurs_finales >= self.niveau_pdi
+            idx_pdi_ok = non_rappeles_idx[pdi_ok]
+            idx_pdi_ko = non_rappeles_idx[~pdi_ok]
+            
+            if len(idx_pdi_ok) > 0:
+                capital_rembourse[idx_pdi_ok] = 1.0
+                cashflows_nom[idx_pdi_ok] = 1.0
+                payoffs[idx_pdi_ok] = 1.0 * facteur_actu_mat
+                tri_annualise[idx_pdi_ok] = 0.0
+                
+            if len(idx_pdi_ko) > 0:
+                vals_ko = trajectoires[idx_pdi_ko, -1]
+                ratio_remb = np.maximum(0.0, vals_ko / niveau_initial)
+                capital_rembourse[idx_pdi_ko] = ratio_remb
+                cashflows_nom[idx_pdi_ko] = ratio_remb
+                payoffs[idx_pdi_ko] = ratio_remb * facteur_actu_mat
+                tri_annualise[idx_pdi_ko] = np.where(
+                    ratio_remb > 0,
+                    (ratio_remb) ** (1.0 / annees_totales) - 1.0,
+                    -1.0
+                )
+                
+        metrics = {
+            "payoffs": payoffs,
+            "cashflows_nom": cashflows_nom,
+            "tri_annualise": tri_annualise,
+            "duree_effective": duree_effective,
+            "coupons_touches": coupons_touches,
+            "capital_rembourse": capital_rembourse
+        }
+        return payoffs, metrics
 
 
 class AthenaProduct(AutocallProduct):
@@ -234,6 +403,19 @@ class AthenaProduct(AutocallProduct):
     Le coupon n'est versé qu'au moment du rappel anticipé (effet mémoire automatique).
     Aucun flux intermédiaire n'est détaché en cours de vie.
     """
+    def __init__(self, barriere_rappel=1000.0, niveau_pdi=500.0, non_call_period_mois=12, 
+                 frequence_obs_mois=3, degressivite=0.0, plancher_rappel=None, coupon_periode=2.0, ref_s0=None):
+        super().__init__(
+            barriere_rappel=barriere_rappel,
+            niveau_pdi=niveau_pdi,
+            non_call_period_mois=non_call_period_mois,
+            frequence_obs_mois=frequence_obs_mois,
+            degressivite=degressivite,
+            plancher_rappel=plancher_rappel,
+            coupon_periode=coupon_periode,
+            ref_s0=ref_s0
+        )
+
     def clone_for_spot(self, new_s0):
         ratio = float(new_s0) / self.ref_s0
         return AthenaProduct(
@@ -242,6 +424,7 @@ class AthenaProduct(AutocallProduct):
             non_call_period_mois=self.non_call_period_mois,
             frequence_obs_mois=self.frequence_obs_mois,
             degressivite=self.degressivite,
+            plancher_rappel=self.plancher_rappel * ratio if self.plancher_rappel is not None else None,
             coupon_periode=self.coupon_periode * 100.0,
             ref_s0=float(new_s0)
         )
@@ -255,7 +438,7 @@ class PhoenixProduct(AutocallProduct):
     Chaque coupon est actualisé à sa propre date de versement.
     """
     def __init__(self, barriere_rappel=1000.0, barriere_coupon=700.0, niveau_pdi=500.0, 
-                 non_call_period_mois=11, frequence_obs_mois=3, degressivite=0.0, 
+                 non_call_period_mois=12, frequence_obs_mois=3, degressivite=0.0, plancher_rappel=None,
                  coupon_periode=2.0, avec_memoire=True, ref_s0=None):
         super().__init__(
             barriere_rappel=barriere_rappel,
@@ -263,11 +446,12 @@ class PhoenixProduct(AutocallProduct):
             non_call_period_mois=non_call_period_mois,
             frequence_obs_mois=frequence_obs_mois,
             degressivite=degressivite,
+            plancher_rappel=plancher_rappel,
             coupon_periode=coupon_periode,
             ref_s0=ref_s0
         )
         self.barriere_coupon = float(barriere_coupon)
-        self.avec_memoire = avec_memoire
+        self.avec_memoire = bool(avec_memoire)
 
     def clone_for_spot(self, new_s0):
         ratio = float(new_s0) / self.ref_s0
@@ -278,34 +462,49 @@ class PhoenixProduct(AutocallProduct):
             non_call_period_mois=self.non_call_period_mois,
             frequence_obs_mois=self.frequence_obs_mois,
             degressivite=self.degressivite,
+            plancher_rappel=self.plancher_rappel * ratio if self.plancher_rappel is not None else None,
             coupon_periode=self.coupon_periode * 100.0,
             avec_memoire=self.avec_memoire,
             ref_s0=float(new_s0)
         )
 
-    def calculate_payoff(self, trajectoires, est_rappele, obs_de_rappel, niveau_initial, scenario: MarketScenario, taux_actualisation: float = 0.0):
+    def calculate_payoff(self, trajectoires, est_rappele, obs_de_rappel, niveau_initial, scenario=None, taux_actualisation: float = 0.0, total_jours=None, jours_par_an=252):
         nb_trajectoires = trajectoires.shape[0]
+        if total_jours is None:
+            total_jours = scenario.total_jours if scenario is not None else (trajectoires.shape[1] - 1)
+        if scenario is not None and hasattr(scenario, 'jours_par_an'):
+            jours_par_an = scenario.jours_par_an
+        annees_totales = total_jours / float(jours_par_an)
+        
+        schedule = self.get_barrieres_schedule(total_jours, jours_par_an)
+        nb_obs = len(schedule)
+        t_obs_array = np.array([item["annee"] for item in schedule])
+        
         payoffs = np.zeros(nb_trajectoires)
+        cashflows_nom = np.zeros(nb_trajectoires)
+        coupons_total = np.zeros(nb_trajectoires)
+        capital_rembourse = np.zeros(nb_trajectoires)
+        duree_effective = np.zeros(nb_trajectoires)
         
-        jours_par_mois = scenario.jours_par_an // 12
-        jours_entre_obs = jours_par_mois * self.frequence_obs_mois
-        annees_par_obs = jours_entre_obs / scenario.jours_par_an
-        
-        # Dates de constatation
-        dates_obs_jours = [t for t in range(1, scenario.total_jours + 1) if t % jours_entre_obs == 0]
-        
+        cf_matrix = np.zeros((nb_trajectoires, nb_obs))
         en_vie = np.ones(nb_trajectoires, dtype=bool)
         coupons_memoire = np.zeros(nb_trajectoires, dtype=float)
         
-        for k_idx, t_j in enumerate(dates_obs_jours):
-            obs_num = k_idx + 1
-            t_annee = obs_num * annees_par_obs
+        nb_coupons_encaisses = np.zeros(nb_trajectoires, dtype=float)
+        nb_coupons_sauves_memoire = np.zeros(nb_trajectoires, dtype=float)
+        nb_obs_actives = np.zeros(nb_trajectoires, dtype=int)
+        
+        for k_idx, item in enumerate(schedule):
+            t_j = item["jour"]
+            obs_num = item["obs_num"]
+            t_annee = item["annee"]
             facteur_actu = np.exp(-taux_actualisation * t_annee)
             
             masque_actifs = en_vie
             if not np.any(masque_actifs):
                 break
                 
+            nb_obs_actives[masque_actifs] += 1
             niveaux_actifs = trajectoires[masque_actifs, t_j]
             coupon_condition = (niveaux_actifs >= self.barriere_coupon)
             
@@ -315,37 +514,79 @@ class PhoenixProduct(AutocallProduct):
             
             # 1. Gestion des coupons
             if self.avec_memoire:
-                montant_coupons = self.coupon_periode + coupons_memoire[indices_coupon_ok]
+                mem_prec = coupons_memoire[indices_coupon_ok]
+                montant_coupons = self.coupon_periode + mem_prec
                 payoffs[indices_coupon_ok] += montant_coupons * facteur_actu
+                cf_matrix[indices_coupon_ok, k_idx] = montant_coupons
+                coupons_total[indices_coupon_ok] += montant_coupons
+                
+                # Suivi coupons sauvés par mémoire
+                sauves_masque = (mem_prec > 1e-6)
+                if np.any(sauves_masque):
+                    idx_sauves = indices_coupon_ok[sauves_masque]
+                    nb_coupons_sauves_memoire[idx_sauves] += np.round(mem_prec[sauves_masque] / self.coupon_periode)
+                
+                nb_coupons_encaisses[indices_coupon_ok] += np.round(montant_coupons / self.coupon_periode)
                 coupons_memoire[indices_coupon_ok] = 0.0
                 
-                # Mise en mémoire pour ceux qui ne franchissent pas la barrière de coupon
+                # Mise en mémoire pour ceux sous la barrière
                 coupons_memoire[indices_coupon_ko] += self.coupon_periode
             else:
                 payoffs[indices_coupon_ok] += self.coupon_periode * facteur_actu
+                cf_matrix[indices_coupon_ok, k_idx] = self.coupon_periode
+                coupons_total[indices_coupon_ok] += self.coupon_periode
+                nb_coupons_encaisses[indices_coupon_ok] += 1.0
                 
             # 2. Gestion du rappel anticipé à cette observation
-            rappel_a_cette_obs = est_rappele & (obs_de_rappel == obs_num)
+            rappel_a_cette_obs = est_rappele & (obs_de_rappel == obs_num) & en_vie
             if np.any(rappel_a_cette_obs):
-                # Remboursement du capital à 100% actualisé
                 payoffs[rappel_a_cette_obs] += 1.0 * facteur_actu
+                capital_rembourse[rappel_a_cette_obs] = 1.0
+                duree_effective[rappel_a_cette_obs] = t_annee
                 en_vie[rappel_a_cette_obs] = False
                 
         # 3. Remboursement du capital à maturité pour les trajectoires non rappelées
         non_rappeles = ~est_rappele
         if np.any(non_rappeles):
-            facteur_actu_maturite = np.exp(-taux_actualisation * scenario.annees)
+            facteur_actu_maturite = np.exp(-taux_actualisation * annees_totales)
             valeurs_finales = trajectoires[non_rappeles, -1]
             indices_non_rappeles = np.where(non_rappeles)[0]
+            duree_effective[indices_non_rappeles] = annees_totales
             
             au_dessus_pdi = valeurs_finales >= self.niveau_pdi
             indices_pdi_ok = indices_non_rappeles[au_dessus_pdi]
             payoffs[indices_pdi_ok] += 1.0 * facteur_actu_maturite
+            capital_rembourse[indices_pdi_ok] = 1.0
             
             indices_pdi_ko = indices_non_rappeles[~au_dessus_pdi]
-            payoffs[indices_pdi_ko] += (valeurs_finales[~au_dessus_pdi] / niveau_initial) * facteur_actu_maturite
+            ratio_perte = np.maximum(0.0, valeurs_finales[~au_dessus_pdi] / niveau_initial)
+            payoffs[indices_pdi_ko] += ratio_perte * facteur_actu_maturite
+            capital_rembourse[indices_pdi_ko] = ratio_perte
             
-        return payoffs
+        cashflows_nom = coupons_total + capital_rembourse
+        
+        # 4. Résolution vectorisée exacte du TRI (IRR)
+        tri_annualise = _resoudre_tri_vectorise(cf_matrix, capital_rembourse, duree_effective, t_obs_array)
+        
+        # Métriques riches de flux Phoenix
+        taux_coupons_encaisses = float(np.mean(nb_coupons_encaisses / np.maximum(1, nb_obs_actives)) * 100.0)
+        efficacite_memoire = float(np.mean(nb_coupons_sauves_memoire > 0) * 100.0)
+        coupons_total_moyen = float(np.mean(coupons_total) * 100.0)
+        nb_coupons_encaisses_moy = float(np.mean(nb_coupons_encaisses))
+        
+        metrics = {
+            "payoffs": payoffs,
+            "cashflows_nom": cashflows_nom,
+            "tri_annualise": tri_annualise,
+            "duree_effective": duree_effective,
+            "coupons_touches": coupons_total,
+            "capital_rembourse": capital_rembourse,
+            "taux_coupons_encaisses": taux_coupons_encaisses,
+            "efficacite_memoire": efficacite_memoire,
+            "coupons_total_moyen": coupons_total_moyen,
+            "nb_coupons_encaisses_moy": nb_coupons_encaisses_moy
+        }
+        return payoffs, metrics
 
 class SimulationEngine:
     """Le chef d'orchestre qui lance les calculs globaux"""
@@ -368,13 +609,121 @@ class SimulationEngine:
             
         # Sur le Decrement
         est_rappele_dec, obs_de_rappel_dec = product.evaluate(traj_dec, scenario, self.nb_trajectoires)
-        payoffs_dec = product.calculate_payoff(traj_dec, est_rappele_dec, obs_de_rappel_dec, niveau_initial, scenario, taux_actualisation)
+        res_dec = product.calculate_payoff(traj_dec, est_rappele_dec, obs_de_rappel_dec, niveau_initial, scenario, taux_actualisation)
+        payoffs_dec = res_dec[0] if isinstance(res_dec, tuple) else res_dec
         
         # Sur le Price Return
         est_rappele_pr, obs_de_rappel_pr = product.evaluate(traj_pr, scenario, self.nb_trajectoires)
-        payoffs_pr = product.calculate_payoff(traj_pr, est_rappele_pr, obs_de_rappel_pr, niveau_initial, scenario, taux_actualisation)
+        res_pr = product.calculate_payoff(traj_pr, est_rappele_pr, obs_de_rappel_pr, niveau_initial, scenario, taux_actualisation)
+        payoffs_pr = res_pr[0] if isinstance(res_pr, tuple) else res_pr
         
         return est_rappele_dec, obs_de_rappel_dec, payoffs_dec, est_rappele_pr, obs_de_rappel_pr, payoffs_pr
+
+    def run_pricing_simulation(self, list_indices: list, product: AutocallProduct, annees: int, 
+                               r_sans_risque: float = 0.03, taux_actualisation: float = None, jours_par_an: int = 252):
+        """Pricer dédié et direct pour une liste d'indices (Price Return, Décrément % ou Décrément Pts).
+        Le Total Return sous-jacent dérive toujours au taux sans risque r_sans_risque.
+        Chaque indice est simulé sur sa propre dynamique sans dualisme artificiel.
+        """
+        if taux_actualisation is None:
+            taux_actualisation = r_sans_risque
+            
+        total_jours = int(annees * jours_par_an)
+        dt = 1.0 / float(jours_par_an)
+        
+        # Tirages appariés stricts
+        np.random.seed(self.seed)
+        Z_chocs = np.random.normal(0, 1, size=(self.nb_trajectoires, total_jours))
+        
+        schedule = product.get_barrieres_schedule(total_jours, jours_par_an)
+        
+        results = {}
+        for idx in list_indices:
+            s0 = float(idx.niveau_initial)
+            # 1. Simulation propre de l'indice
+            trajectoires = idx.simulate_single(r_sans_risque, total_jours, dt, self.nb_trajectoires, Z_chocs, jours_par_an)
+            
+            # 2. Clonage du produit adapté au spot de cet indice
+            prod_idx = product.clone_for_spot(s0)
+            
+            # 3. Évaluation du rappel
+            est_rappele, obs_de_rappel = prod_idx.evaluate(
+                trajectoires, nb_trajectoires=self.nb_trajectoires, total_jours=total_jours, jours_par_an=jours_par_an
+            )
+            
+            # 4. Calcul des payoffs et métriques riches
+            payoffs, metrics = prod_idx.calculate_payoff(
+                trajectoires, est_rappele, obs_de_rappel, s0, 
+                taux_actualisation=taux_actualisation, total_jours=total_jours, jours_par_an=jours_par_an
+            )
+            
+            # 5. Calcul des KPIs financiers
+            tri_array = metrics["tri_annualise"]
+            valeurs_finales = trajectoires[:, -1]
+            
+            # PDI
+            sous_pdi = (~est_rappele) & (valeurs_finales < prod_idx.niveau_pdi)
+            pct_pdi = float(np.mean(sous_pdi) * 100.0)
+            perte_moy_pdi = float(1.0 - (np.mean(valeurs_finales[sous_pdi]) / s0)) * 100.0 if np.any(sous_pdi) else 0.0
+            
+            # Autocall & Duration
+            pct_rappel = float(np.mean(est_rappele) * 100.0)
+            duration = float(np.mean(metrics["duree_effective"]))
+            moy_payoff = float(np.mean(payoffs) * 100.0)
+            
+            # TRI
+            tri_moyen = float(np.mean(tri_array) * 100.0)
+            tri_median = float(np.median(tri_array) * 100.0)
+            tri_p10 = float(np.percentile(tri_array, 10) * 100.0)
+            tri_p90 = float(np.percentile(tri_array, 90) * 100.0)
+            pct_tri_positif = float(np.mean(tri_array > 0.0) * 100.0)
+            
+            # Sorties par date (Waterfall)
+            sorties_obs = []
+            for item in schedule:
+                obs_k = item["obs_num"]
+                mask_obs = est_rappele & (obs_de_rappel == obs_k)
+                pct_obs = float(np.mean(mask_obs) * 100.0)
+                sorties_obs.append({
+                    "obs_num": obs_k,
+                    "annee": item["annee"],
+                    "barriere_pct": item["barriere_pct"],
+                    "pct_rappel": pct_obs
+                })
+            
+            non_rappeles = ~est_rappele
+            pct_remb_pair = float(np.mean(non_rappeles & ~sous_pdi) * 100.0)
+            
+            res_idx = {
+                "index": idx,
+                "product": prod_idx,
+                "trajectoires": trajectoires,
+                "est_rappele": est_rappele,
+                "obs_de_rappel": obs_de_rappel,
+                "payoffs": payoffs,
+                "metrics": metrics,
+                "tri_array": tri_array,
+                "pct_rappel": pct_rappel,
+                "duration": duration,
+                "moy_payoff": moy_payoff,
+                "pct_pdi": pct_pdi,
+                "perte_moy_pdi": perte_moy_pdi,
+                "tri_moyen": tri_moyen,
+                "tri_median": tri_median,
+                "tri_p10": tri_p10,
+                "tri_p90": tri_p90,
+                "pct_tri_positif": pct_tri_positif,
+                "pct_remb_pair": pct_remb_pair,
+                "sorties_obs": sorties_obs,
+                "schedule": schedule,
+                "taux_coupons_encaisses": metrics.get("taux_coupons_encaisses"),
+                "efficacite_memoire": metrics.get("efficacite_memoire"),
+                "coupons_total_moyen": metrics.get("coupons_total_moyen"),
+                "nb_coupons_encaisses_moy": metrics.get("nb_coupons_encaisses_moy")
+            }
+            results[idx.nom] = res_idx
+            
+        return results
 
     def run(self, index: DecrementIndex, scenario: MarketScenario, product: AutocallProduct = None, taux_actualisation=0.0):
         traj_pr, traj_dec = self.simulate_trajectoires(index, scenario)
@@ -1397,6 +1746,265 @@ class SimulationEngine:
             showlegend=False,
             xaxis=dict(tickangle=0),
             margin=dict(l=60, r=40, t=50, b=50)
+        )
+        return fig
+
+    def plot_pricing_kpis_bars(self, results: dict):
+        """Graphique à barres comparatif des KPIs majeurs de pricing (Autocall, TRI, PDI, Fair Value)."""
+        import re
+        indices_noms = list(results.keys())
+        taux_autocall = [results[k]["pct_rappel"] for k in indices_noms]
+        tri_moyens = [results[k]["tri_moyen"] for k in indices_noms]
+        taux_pdi = [results[k]["pct_pdi"] for k in indices_noms]
+        payoffs = [results[k]["moy_payoff"] for k in indices_noms]
+        
+        short_noms = []
+        for idx_i, nom_idx in enumerate(indices_noms):
+            m = re.search(r'\(([^)]+)\)$', nom_idx.strip())
+            ticker_short = m.group(1) if m else ((nom_idx[:25] + '...') if len(nom_idx) > 25 else nom_idx)
+            short_noms.append(f"Indice {idx_i + 1} : {ticker_short}")
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=short_noms, y=taux_autocall,
+            name="Taux d'Autocall (%)",
+            marker_color="#16a34a",
+            text=[f"{v:.1f}%" for v in taux_autocall],
+            textposition="auto"
+        ))
+        fig.add_trace(go.Bar(
+            x=short_noms, y=tri_moyens,
+            name="TRA Moyen (%)",
+            marker_color="#0284c7",
+            text=[f"{v:.2f}%" for v in tri_moyens],
+            textposition="auto"
+        ))
+        fig.add_trace(go.Bar(
+            x=short_noms, y=taux_pdi,
+            name="Probabilité sous PDI (%)",
+            marker_color="#dc2626",
+            text=[f"{v:.2f}%" for v in taux_pdi],
+            textposition="auto"
+        ))
+        fig.add_trace(go.Bar(
+            x=short_noms, y=payoffs,
+            name="Fair Value (% nom.)",
+            marker_color="#7c3aed",
+            text=[f"{v:.1f}%" for v in payoffs],
+            textposition="auto"
+        ))
+        fig.update_layout(
+            barmode='group',
+            title="<b>Comparaison des Indicateurs Clés de Risque et de Rendement</b>",
+            yaxis_title="<b>Pourcentage (%)</b>",
+            template="plotly_white",
+            xaxis=dict(tickangle=0),
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.20,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=80)
+        )
+        return fig
+
+    def plot_pricing_waterfall(self, results: dict, product: AutocallProduct):
+        """Graphique à barres comparant la distribution des sorties (Rappels par année vs Maturité)."""
+        palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
+        fig = go.Figure()
+        
+        for idx_i, (nom_idx, data) in enumerate(results.items()):
+            color = palette[idx_i % len(palette)]
+            schedule = data["schedule"]
+            est_rappele = data["est_rappele"]
+            obs_rappel = data["obs_de_rappel"]
+            total_traj = len(est_rappele)
+            
+            x_labels = []
+            y_pcts = []
+            
+            # Constatations de rappel
+            for item in schedule:
+                if not item["eligible"]:
+                    continue
+                obs_k = item["obs_num"]
+                annee_val = item["annee"]
+                pct = np.sum(est_rappele & (obs_rappel == obs_k)) / total_traj * 100.0
+                x_labels.append(f"Rappel An {annee_val:.2f}")
+                y_pcts.append(pct)
+                
+            # Sorties à maturité
+            x_labels.append("Maturité : Remb. 100%")
+            y_pcts.append(data.get("pct_remb_pair", 0.0))
+            
+            x_labels.append("Maturité : Perte PDI")
+            y_pcts.append(data.get("pct_pdi", 0.0))
+            
+            fig.add_trace(go.Bar(
+                x=x_labels, y=y_pcts,
+                name=nom_idx,
+                marker_color=color
+            ))
+            
+        fig.update_layout(
+            barmode='group',
+            title="<b>Distribution des Scénarios de Sortie (Rappels vs Maturité)</b>",
+            xaxis_title="<b>Scénario de Sortie</b>",
+            yaxis_title="<b>Fréquence (%)</b>",
+            template="plotly_white",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=90)
+        )
+        return fig
+
+    def plot_pricing_distribution_tri(self, results: dict):
+        """Histogramme de distribution des Rendements (TRI / IRR annualisé) pour chaque indice."""
+        palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
+        fig = go.Figure()
+        
+        for idx_i, (nom_idx, data) in enumerate(results.items()):
+            color = palette[idx_i % len(palette)]
+            tri_vals = data["tri_array"] * 100.0
+            # Bornage de sécurité pour affichage propre
+            tri_sub = np.clip(tri_vals, -50.0, 30.0)
+            
+            fig.add_trace(go.Histogram(
+                x=tri_sub,
+                name=nom_idx,
+                marker_color=color,
+                opacity=0.6,
+                nbinsx=50,
+                histnorm='percent'
+            ))
+            
+        fig.add_vline(x=0.0, line_dash="dash", line_color="#475569", line_width=1.5, annotation_text="TRA 0% (Capital au pair)")
+        fig.update_layout(
+            barmode='overlay',
+            title="<b>Distribution Comparée du TRA Actuariel</b>",
+            xaxis_title="<b>Taux de Rendement Actuariel Annualisé - TRA (%)</b>",
+            yaxis_title="<b>Proportion des Trajectoires (%)</b>",
+            template="plotly_white",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.20,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=50, r=40, t=60, b=80)
+        )
+        return fig
+
+    def plot_pricing_trajectoires_avec_barrieres(self, results: dict, product: AutocallProduct, annees: int):
+        """Affiche les trajectoires médianes et fuseaux P10-P90 des indices face aux barrières du produit."""
+        palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']
+        fig = go.Figure()
+        
+        jours_par_an = 252
+        total_jours = int(annees * jours_par_an)
+        axe_temps = np.linspace(0, annees, total_jours + 1)
+        
+        # 1. Trajectoires et fuseaux de chaque indice
+        for idx_i, (nom_idx, data) in enumerate(results.items()):
+            color = palette[idx_i % len(palette)]
+            s0 = float(data["index"].niveau_initial)
+            traj = data["trajectoires"]
+            
+            traj_pct = (traj / s0) * 100.0
+            med_courbe = np.median(traj_pct, axis=0)
+            p10_courbe = np.percentile(traj_pct, 10, axis=0)
+            p90_courbe = np.percentile(traj_pct, 90, axis=0)
+            
+            rgb_col = f"{int(color[1:3], 16)}, {int(color[3:5], 16)}, {int(color[5:7], 16)}"
+            
+            # Fuseau P10 - P90
+            fig.add_trace(go.Scatter(
+                x=axe_temps, y=p90_courbe, mode='lines', line=dict(width=0),
+                showlegend=False, legendgroup=nom_idx, hoverinfo='skip'
+            ))
+            fig.add_trace(go.Scatter(
+                x=axe_temps, y=p10_courbe, mode='lines', line=dict(width=0),
+                fill='tonexty', fillcolor=f"rgba({rgb_col}, 0.12)",
+                name=f"{nom_idx} [P10-P90]", legendgroup=nom_idx, showlegend=False
+            ))
+            # Médiane
+            fig.add_trace(go.Scatter(
+                x=axe_temps, y=med_courbe, mode='lines', line=dict(color=color, width=2.8),
+                name=nom_idx, legendgroup=nom_idx, showlegend=True,
+                hovertemplate=f"<b>{nom_idx}</b><br>Horizon: %{{x:.2f}} ans<br>Niveau Médian: <b>%{{y:.1f}}%</b><extra></extra>"
+            ))
+            
+        # 2. Barrières du produit (normalisées en % du spot)
+        ref_s0 = product.ref_s0 if product.ref_s0 > 0 else 1000.0
+        pdi_pct = (product.niveau_pdi / ref_s0) * 100.0
+        rappel_pct = (product.barriere_rappel / ref_s0) * 100.0
+        
+        # Barrière PDI
+        fig.add_hline(y=pdi_pct, line_dash="dash", line_color="#dc2626", line_width=2.0,
+                      annotation_text=f"PDI ({pdi_pct:.0f}%)", annotation_position="bottom right")
+        
+        # Barrière Coupon (si Phoenix)
+        if hasattr(product, 'barriere_coupon') and product.barriere_coupon is not None:
+            coupon_pct = (product.barriere_coupon / ref_s0) * 100.0
+            fig.add_hline(y=coupon_pct, line_dash="dot", line_color="#16a34a", line_width=1.8,
+                          annotation_text=f"Barrière Coupon ({coupon_pct:.0f}%)", annotation_position="top left")
+        
+        # Barrière de Rappel (avec dégressivité en escalier et plancher)
+        schedule = product.get_barrieres_schedule(total_jours, jours_par_an)
+        x_barr = [0.0]
+        y_barr = [rappel_pct]
+        
+        for item in schedule:
+            t_an = item["annee"]
+            b_pct = item["barriere_pct"] if np.isfinite(item["barriere_pct"]) else rappel_pct
+            x_barr.append(t_an)
+            y_barr.append(y_barr[-1])
+            x_barr.append(t_an)
+            y_barr.append(b_pct)
+            
+        x_barr.append(annees)
+        y_barr.append(y_barr[-1])
+        
+        fig.add_trace(go.Scatter(
+            x=x_barr, y=y_barr, mode='lines',
+            line=dict(color="#7c3aed", width=2.2, dash='dashdot'),
+            name=f"Barrière Rappel ({rappel_pct:.0f}%)",
+            showlegend=True
+        ))
+        
+        fig.update_layout(
+            title="<b>Trajectoires Médianes des Indices face aux Barrières du Produit</b>",
+            xaxis_title="<b>Horizon Temporel (Années)</b>",
+            yaxis_title="<b>Niveau (% du Spot Initial)</b>",
+            template="plotly_white",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.20,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor="#e2e8f0",
+                borderwidth=1
+            ),
+            margin=dict(l=60, r=40, t=60, b=80)
         )
         return fig
 
