@@ -2320,3 +2320,4 @@ if __name__ == "__main__":
     if bin_stats:
         fig_binned = moteur.plot_binned_averages(bin_stats)
         fig_binned.show()
+
