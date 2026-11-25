@@ -404,20 +404,34 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
 
                 st.divider()
 
-                # --- 3. LES 4 GRAPHIQUES PLOTLY ---
+                # --- 3. LES GRAPHIQUES PLOTLY & DISTRIBUTIONS ---
                 st.markdown("<div class='section-title'>1. Indicateurs Comparés de Risque et de Rendement</div>", unsafe_allow_html=True)
                 fig_kpis = moteur.plot_pricing_kpis_bars(results_pricing)
                 st.plotly_chart(fig_kpis, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>2. Scénarios de Sortie par Année (Rappels vs Échéance)</div>", unsafe_allow_html=True)
-                fig_waterfall = moteur.plot_pricing_waterfall(results_pricing, mon_produit)
-                st.plotly_chart(fig_waterfall, use_container_width=True, config={'displayModeBar': False})
+                st.markdown("<div class='section-title'>2. Distributions Monte Carlo : TRA, Fair Value & Durations</div>", unsafe_allow_html=True)
+                tab_tra, tab_fv, tab_dur = st.tabs([
+                    "Distribution du TRA", 
+                    "Distribution de la Fair Value", 
+                    "Distribution des Durations"
+                ])
+                with tab_tra:
+                    fig_tri_dist = moteur.plot_pricing_distribution_tri(results_pricing)
+                    st.plotly_chart(fig_tri_dist, use_container_width=True, config={'displayModeBar': False})
+
+                with tab_fv:
+                    fig_fv_dist = moteur.plot_pricing_distribution_fair_value(results_pricing)
+                    st.plotly_chart(fig_fv_dist, use_container_width=True, config={'displayModeBar': False})
+
+                with tab_dur:
+                    fig_dur_dist = moteur.plot_pricing_distribution_durations(results_pricing, mon_produit)
+                    st.plotly_chart(fig_dur_dist, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>3. Distribution Comparée du TRA</div>", unsafe_allow_html=True)
-                fig_tri_dist = moteur.plot_pricing_distribution_tri(results_pricing)
-                st.plotly_chart(fig_tri_dist, use_container_width=True, config={'displayModeBar': False})
+                st.markdown("<div class='section-title'>3. Scénarios de Sortie par Année (Rappels vs Échéance)</div>", unsafe_allow_html=True)
+                fig_waterfall = moteur.plot_pricing_waterfall(results_pricing, mon_produit)
+                st.plotly_chart(fig_waterfall, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
                 st.markdown("<div class='section-title'>4. Trajectoires Médianes face aux Barrières du Produit</div>", unsafe_allow_html=True)
@@ -665,4 +679,6 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 st.caption("Distribution de l'écart (Dec - PR) / S0 à maturité bornée entre les centiles P1 et P99.")
                 fig_multi_disp = moteur.plot_multi_dispersion_ecarts(results_multi, scenario_krach)
                 st.plotly_chart(fig_multi_disp, use_container_width=True, config={'displayModeBar': False})
+
+
 
