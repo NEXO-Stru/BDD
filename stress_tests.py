@@ -92,7 +92,7 @@ def get_db_asset_defaults(asset_id, repo, assets_df, prices_pivot):
 
 def render_stress_tests_view(repo, assets_df, prices_pivot):
     """Point d'entrée pour le rendu de l'écran Stress Tests & Pricing."""
-    st.markdown("<h1 class='main-header'>Pricing de Produits Structurés (Athéna & Phoenix)</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>Pricing de Produits Structurés - Athéna & Phoenix</h1>", unsafe_allow_html=True)
 
     mode = st.radio(
         "Mode d'analyse :",
@@ -330,7 +330,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 )
 
                 # --- 1. BANDEAU DE KPIS DE VALORISATION ---
-                memoire_str = " (Mémoire)" if (type_produit == "Phoenix" and avec_memoire) else (" (Sans Mémoire)" if type_produit == "Phoenix" else "")
+                memoire_str = " - Mémoire" if (type_produit == "Phoenix" and avec_memoire) else (" - Sans Mémoire" if type_produit == "Phoenix" else "")
                 st.markdown(f"<div class='section-title'>Indicateurs de Performance et de Risque : {type_produit}{memoire_str}</div>", unsafe_allow_html=True)
 
                 def _render_kpi_card(title, value, subtitle=""):
@@ -392,7 +392,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                         "Duration": f"{d['duration']:.2f} ans",
                         "Risque PDI": f"{d['pct_pdi']:.2f} %",
                         "Perte Moyenne si PDI": f"{d['perte_moy_pdi']:.1f} %",
-                        "Fair Value (% nom.)": f"{d['moy_payoff']:.2f} %"
+                        "Fair Value": f"{d['moy_payoff']:.2f} %"
                     }
                     if type_produit == "Phoenix":
                         row["Coupons Encaissés"] = f"{d['taux_coupons_encaisses']:.1f} %"
@@ -410,7 +410,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                 st.plotly_chart(fig_kpis, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>2. Distributions Monte Carlo : TRA, Fair Value & Durations</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>2. Distributions Monte Carlo : TRA, Fair Value et Durations</div>", unsafe_allow_html=True)
                 tab_tra, tab_fv, tab_dur = st.tabs([
                     "Distribution du TRA", 
                     "Distribution de la Fair Value", 
@@ -429,7 +429,7 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                     st.plotly_chart(fig_dur_dist, use_container_width=True, config={'displayModeBar': False})
 
                 st.divider()
-                st.markdown("<div class='section-title'>3. Scénarios de Sortie par Année (Rappels vs Échéance)</div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-title'>3. Scénarios de Sortie par Année</div>", unsafe_allow_html=True)
                 fig_waterfall = moteur.plot_pricing_waterfall(results_pricing, mon_produit)
                 st.plotly_chart(fig_waterfall, use_container_width=True, config={'displayModeBar': False})
 
@@ -457,15 +457,15 @@ def render_stress_tests_view(repo, assets_df, prices_pivot):
                         "Indice": nom_idx,
                         "Observation": "Maturité",
                         "Horizon (ans)": int(annees),
-                        "Barrière Rappel (%)": "Pair",
-                        "Taux de Rappel (%)": round(d.get("pct_remb_pair", 0.0), 2)
+                        "Barrière": "Capital protégé 100%",
+                        "Taux de Sortie (%)": round(d.get("pct_remb_pair", 0.0), 2)
                     })
                     waterfall_rows.append({
                         "Indice": nom_idx,
                         "Observation": "Maturité",
                         "Horizon (ans)": int(annees),
-                        "Barrière Rappel (%)": "PDI",
-                        "Taux de Rappel (%)": round(d.get("pct_pdi", 0.0), 2)
+                        "Barrière": "PDI",
+                        "Taux de Sortie (%)": round(d.get("pct_pdi", 0.0), 2)
                     })
                 dfs_export["Sorties Temporelles"] = pd.DataFrame(waterfall_rows)
 
